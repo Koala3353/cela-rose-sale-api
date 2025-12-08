@@ -14,18 +14,18 @@ export interface AnalyticsData {
   homePageViews: number;
   shopPageViews: number;
   productViews: number;
-  
+
   // Users
   uniqueUsers: Set<string>;
   totalSessions: number;
-  
+
   // Orders
   totalOrders: number;
   totalRevenue: number;
-  
+
   // API usage
   apiCalls: number;
-  
+
   // Timestamps
   startedAt: string;
   lastUpdatedAt: string;
@@ -79,7 +79,10 @@ export async function loadAnalytics(): Promise<void> {
       analytics.homePageViews = Number(last[1]) || 0;
       analytics.shopPageViews = Number(last[2]) || 0;
       analytics.productViews = Number(last[3]) || 0;
-      analytics.uniqueUsers = new Set((last[4] || '').split(','));
+      // Column E now stores just the count, not comma-separated IDs
+      // We can't restore individual user IDs from count, so just track the count
+      const storedCount = Number(last[4]) || 0;
+      // Keep existing unique users in memory, the count is just for persistence
       analytics.totalSessions = Number(last[5]) || 0;
       analytics.totalOrders = Number(last[6]) || 0;
       analytics.totalRevenue = Number(last[7]) || 0;
@@ -107,7 +110,7 @@ export async function saveAnalytics(): Promise<void> {
       String(analytics.homePageViews),
       String(analytics.shopPageViews),
       String(analytics.productViews),
-      Array.from(analytics.uniqueUsers).join(','),
+      String(analytics.uniqueUsers.size), // Store count instead of IDs to avoid char limit
       String(analytics.totalSessions),
       String(analytics.totalOrders),
       String(analytics.totalRevenue),

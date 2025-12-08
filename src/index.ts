@@ -12,15 +12,15 @@ import { cache } from './cache';
 import { fetchSheetData, parseProductsData, extractFilterOptions, appendToSheet, uploadFileToDrive, updateStockCounts, fetchUserOrdersFromSheet, SheetOrder } from './sheets';
 import { Product, ApiResponse, FilterOptions, OrderPayload } from './types';
 import { verifyGoogleToken, requireAuth, optionalAuth, SessionUser, createJwtToken } from './auth';
-import { 
-  loadAnalytics, 
-  saveAnalytics, 
-  trackHomePageView, 
-  trackShopPageView, 
-  trackProductView, 
-  trackSession, 
-  trackOrder, 
-  trackApiCall, 
+import {
+  loadAnalytics,
+  saveAnalytics,
+  trackHomePageView,
+  trackShopPageView,
+  trackProductView,
+  trackSession,
+  trackOrder,
+  trackApiCall,
   getAnalyticsSnapshot,
   resetAnalytics
 } from './analytics';
@@ -66,7 +66,7 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
-    
+
     if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -124,15 +124,15 @@ async function getProductsFromSheet(): Promise<Product[]> {
  */
 async function initializeCache(): Promise<void> {
   console.log('[Server] Initializing cache...');
-  
+
   try {
     // Fetch initial data
     const products = await getProductsFromSheet();
     cache.set(CACHE_KEY_PRODUCTS, products);
-    
+
     const filters = extractFilterOptions(products);
     cache.set(CACHE_KEY_FILTERS, filters);
-    
+
     // Setup auto-refresh for products
     cache.setupAutoRefresh(CACHE_KEY_PRODUCTS, async () => {
       const newProducts = await getProductsFromSheet();
@@ -141,7 +141,7 @@ async function initializeCache(): Promise<void> {
       cache.set(CACHE_KEY_FILTERS, newFilters);
       return newProducts;
     });
-    
+
     console.log('[Server] Cache initialized successfully');
   } catch (error) {
     console.error('[Server] Failed to initialize cache:', error);
@@ -172,17 +172,17 @@ app.get('/health', (req: Request, res: Response) => {
 app.post('/api/auth/google', async (req: Request, res: Response) => {
   try {
     const { idToken } = req.body;
-    
+
     if (!idToken) {
       return res.status(400).json({
         success: false,
         error: 'Missing idToken in request body',
       });
     }
-    
+
     // Verify the token with Google
     const user = await verifyGoogleToken(idToken);
-    
+
     // Create a JWT and return it to the client. Client should store the token
     // and include it in Authorization: Bearer <token> for authenticated requests.
     const token = createJwtToken(user);
@@ -273,7 +273,7 @@ app.get('/api/debug', (req: Request, res: Response) => {
 app.get('/api/products', async (req: Request, res: Response) => {
   try {
     const cached = cache.get(CACHE_KEY_PRODUCTS);
-    
+
     if (cached) {
       const response: ApiResponse<Product[]> = {
         success: true,
@@ -283,25 +283,25 @@ app.get('/api/products', async (req: Request, res: Response) => {
       };
       return res.json(response);
     }
-    
+
     // Cache miss - fetch from sheet
     const products = await getProductsFromSheet();
     cache.set(CACHE_KEY_PRODUCTS, products);
-    
+
     // Also cache filters
     const filters = extractFilterOptions(products);
     cache.set(CACHE_KEY_FILTERS, filters);
-    
+
     const response: ApiResponse<Product[]> = {
       success: true,
       data: products,
       cached: false
     };
     res.json(response);
-    
+
   } catch (error: any) {
     console.error('[API] Error fetching products:', error);
-    
+
     // Try to return stale cache if available
     const stale = cache.get(CACHE_KEY_PRODUCTS);
     if (stale) {
@@ -314,7 +314,7 @@ app.get('/api/products', async (req: Request, res: Response) => {
       };
       return res.json(response);
     }
-    
+
     const response: ApiResponse<Product[]> = {
       success: false,
       error: error.message || 'Failed to fetch products'
@@ -330,7 +330,7 @@ app.get('/api/products', async (req: Request, res: Response) => {
 app.get('/api/filters', async (req: Request, res: Response) => {
   try {
     const cached = cache.get(CACHE_KEY_FILTERS);
-    
+
     if (cached) {
       const response: ApiResponse<FilterOptions> = {
         success: true,
@@ -340,28 +340,28 @@ app.get('/api/filters', async (req: Request, res: Response) => {
       };
       return res.json(response);
     }
-    
+
     // Need to fetch products first to extract filters
     const productsCached = cache.get(CACHE_KEY_PRODUCTS);
     let products: Product[];
-    
+
     if (productsCached) {
       products = productsCached.data;
     } else {
       products = await getProductsFromSheet();
       cache.set(CACHE_KEY_PRODUCTS, products);
     }
-    
+
     const filters = extractFilterOptions(products);
     cache.set(CACHE_KEY_FILTERS, filters);
-    
+
     const response: ApiResponse<FilterOptions> = {
       success: true,
       data: filters,
       cached: false
     };
     res.json(response);
-    
+
   } catch (error: any) {
     console.error('[API] Error fetching filters:', error);
     const response: ApiResponse<FilterOptions> = {
@@ -379,12 +379,12 @@ app.get('/api/filters', async (req: Request, res: Response) => {
 app.post('/api/refresh', async (req: Request, res: Response) => {
   try {
     const products = await cache.forceRefresh(CACHE_KEY_PRODUCTS);
-    
+
     if (products) {
       const filters = extractFilterOptions(products);
       cache.set(CACHE_KEY_FILTERS, filters);
     }
-    
+
     res.json({
       success: true,
       message: 'Cache refreshed successfully',
@@ -414,19 +414,19 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
       // Fallback to direct body parsing for JSON requests
       order = req.body;
     }
-    
+
     const sessionUser = (req as any).user as SessionUser;
     const uploadedFile = req.file;
-    
+
     console.log('[API] Processing order for user:', sessionUser.email);
     if (uploadedFile) {
       console.log('[API] Payment proof received:', uploadedFile.originalname, uploadedFile.size, 'bytes');
     }
-    
+
     // Use session user email if not provided
     const email = order.email || sessionUser.email;
     const purchaserName = order.purchaserName || sessionUser.name;
-    
+
     // Validate required fields
     if (!email || !purchaserName) {
       return res.status(400).json({
@@ -434,11 +434,11 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
         error: 'Missing required fields: email and purchaserName'
       });
     }
-    
+
     // Generate order ID
     const orderId = 'ORD-' + Math.random().toString(36).substring(2, 11).toUpperCase();
     const timestamp = new Date().toISOString();
-    
+
     // Upload payment proof to Google Drive if provided
     let paymentProofLink = '';
     if (uploadedFile) {
@@ -454,7 +454,7 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
         // Continue without the link
       }
     }
-    
+
     // Build the row to append to the orders sheet
     // Columns should match your "Orders" sheet headers
     const orderRow = [
@@ -488,19 +488,20 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
       order.notes || '',
       String(order.total || 0),
       'Pending', // Status
-      paymentProofLink // Payment Proof Link
+      paymentProofLink, // Payment Proof Link (column AB)
+      paymentProofLink ? `=IMAGE("${paymentProofLink.replace('/view', '/preview')}")` : '' // Payment Proof Image (column AC)
     ];
-    
+
     // Append to Google Sheet
     try {
-  await appendToSheet(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, [orderRow], true); // Use queue for orders
+      await appendToSheet(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, [orderRow], true); // Use queue for orders
       console.log('[API] Order saved to sheet:', orderId);
 
       // After saving the order, update stock counts
       if (order.items && order.items.length > 0) {
         const products = await getProductsFromSheet();
         const stockUpdates = new Map<string, number>();
-        
+
         for (const item of order.items) {
           const product = products.find(p => p.id === item.id);
           if (product) {
@@ -517,7 +518,7 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
       console.error('[API] Failed to save order to sheet or update stock:', sheetError.message);
       // Continue anyway - order will still be saved locally on frontend
     }
-    
+
     console.log('[API] New order received:', {
       orderId,
       userId: sessionUser.id,
@@ -526,10 +527,10 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
       total: order.total,
       items: order.cartItems
     });
-    
+
     // Track order in analytics
     trackOrder(order.total || 0, sessionUser.id);
-    
+
     res.json({
       success: true,
       data: {
@@ -538,7 +539,7 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
         timestamp
       }
     });
-    
+
   } catch (error: any) {
     console.error('[API] Error submitting order:', error);
     res.status(500).json({
@@ -556,23 +557,23 @@ app.get('/api/orders', requireAuth, async (req: Request, res: Response) => {
   try {
     const sessionUser = (req as any).user as SessionUser;
     const userEmail = sessionUser.email;
-    
+
     console.log('[API] Fetching orders for user:', userEmail);
-    
+
     const orders = await fetchUserOrdersFromSheet(
       GOOGLE_SHEET_ID,
       ORDERS_SHEET_NAME,
       userEmail,
       GOOGLE_API_KEY
     );
-    
+
     const response: ApiResponse<SheetOrder[]> = {
       success: true,
       data: orders
     };
-    
+
     res.json(response);
-    
+
   } catch (error: any) {
     console.error('[API] Error fetching user orders:', error);
     res.status(500).json({
@@ -589,36 +590,36 @@ app.get('/api/orders', requireAuth, async (req: Request, res: Response) => {
 app.get('/api/products/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     let products: Product[];
     const cached = cache.get(CACHE_KEY_PRODUCTS);
-    
+
     if (cached) {
       products = cached.data;
     } else {
       products = await getProductsFromSheet();
       cache.set(CACHE_KEY_PRODUCTS, products);
     }
-    
+
     const product = products.find(p => p.id === id);
-    
+
     if (!product) {
       return res.status(404).json({
         success: false,
         error: 'Product not found'
       });
     }
-    
+
     // Track product view
     const sessionUser = (req as any).user as SessionUser | undefined;
     trackProductView(id, sessionUser?.id);
-    
+
     res.json({
       success: true,
       data: product,
       cached: !!cached
     });
-    
+
   } catch (error: any) {
     console.error('[API] Error fetching product:', error);
     res.status(500).json({
@@ -664,7 +665,7 @@ app.post('/api/analytics/pageview', optionalAuth, (req: Request, res: Response) 
  */
 app.get('/api/analytics', (req: Request, res: Response) => {
   const stats = getAnalyticsSnapshot();
-  
+
   res.json({
     success: true,
     data: stats
@@ -677,7 +678,7 @@ app.get('/api/analytics', (req: Request, res: Response) => {
  */
 app.post('/api/analytics/reset', (req: Request, res: Response) => {
   resetAnalytics();
-  
+
   res.json({
     success: true,
     message: 'Analytics reset successfully'
@@ -737,11 +738,11 @@ app.listen(PORT, async () => {
 ║  Cache TTL: ${process.env.CACHE_TTL || '30000'}ms                                    ║
 ╚════════════════════════════════════════════════════════════╝
   `);
-  
+
   // Load analytics data
   loadAnalytics();
   console.log('[Server] 📊 Analytics loaded');
-  
+
   // Validate configuration
   if (!GOOGLE_SHEET_ID || !GOOGLE_API_KEY) {
     console.warn('[Server] ⚠️  Missing Google Sheets configuration!');

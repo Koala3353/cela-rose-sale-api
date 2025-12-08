@@ -293,30 +293,30 @@ export async function uploadFileToDrive(
 ): Promise<string> {
   try {
     const auth = getAuth();
-    
+
     if (!auth) {
       throw new Error('Service account required for uploading to Drive');
     }
-    
+
     const client = await auth.getClient();
     const driveClient = google.drive({ version: 'v3', auth: client as any });
-    
+
     // Convert buffer to readable stream
     const stream = new Readable();
     stream.push(fileBuffer);
     stream.push(null);
-    
+
     // File metadata
     const fileMetadata: any = {
       name: fileName,
     };
-    
+
     // Optionally put in a specific folder
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
     if (folderId) {
       fileMetadata.parents = [folderId];
     }
-    
+
     // Upload the file
     const response = await driveClient.files.create({
       requestBody: fileMetadata,
@@ -326,13 +326,13 @@ export async function uploadFileToDrive(
       },
       fields: 'id, webViewLink, webContentLink',
     });
-    
+
     const fileId = response.data.id;
-    
+
     if (!fileId) {
       throw new Error('No file ID returned from upload');
     }
-    
+
     // Make the file publicly viewable
     await driveClient.permissions.create({
       fileId: fileId,
@@ -341,12 +341,12 @@ export async function uploadFileToDrive(
         type: 'anyone',
       },
     });
-    
+
     // Get the shareable link
     const fileLink = `https://drive.google.com/file/d/${fileId}/view`;
-    
+
     console.log('[Drive] Uploaded file:', fileName, '-> ', fileLink);
-    
+
     return fileLink;
   } catch (error: any) {
     console.error('[Drive] Error uploading file:', error);
@@ -387,6 +387,7 @@ export interface SheetOrder {
   msgRecipient: string;
   notes: string;
   total: number;
+  payment: number;
   status: string;
   assignedDoveEmail: string;
 }
@@ -402,14 +403,14 @@ export async function fetchUserOrdersFromSheet(
 ): Promise<SheetOrder[]> {
   try {
     const rawData = await fetchSheetData(sheetId, sheetName, apiKey);
-    
+
     if (!rawData || rawData.length < 2) {
       console.log('[Sheets] No orders found in sheet');
       return [];
     }
 
     const headers = rawData[0].map(h => h.toLowerCase().trim().replace(/\s+/g, ''));
-    
+
     // Map header names to indices
     const getIndex = (names: string[]): number => {
       for (const name of names) {
@@ -446,6 +447,7 @@ export async function fetchUserOrdersFromSheet(
       msgRecipient: getIndex(['messageforrecipient', 'msgrecipient', 'recipientmessage']),
       notes: getIndex(['notes', 'specialrequests']),
       total: getIndex(['total', 'amount', 'price']),
+      payment: 20, // Column U (21st column, 0-indexed = 20)
       status: getIndex(['status']),
       assignedDoveEmail: getIndex(['assigneddoveemail', 'assigneddove', 'dove'])
     };
@@ -458,9 +460,9 @@ export async function fetchUserOrdersFromSheet(
       if (!row || row.length === 0) continue;
 
       const getValue = (idx: number): string => (idx >= 0 && row[idx]) ? row[idx].trim() : '';
-      
+
       const orderEmail = getValue(indices.email).toLowerCase().trim();
-      
+
       // Filter by user email
       if (orderEmail !== normalizedUserEmail) continue;
 
@@ -491,6 +493,7 @@ export async function fetchUserOrdersFromSheet(
         msgRecipient: getValue(indices.msgRecipient),
         notes: getValue(indices.notes),
         total: parseFloat(getValue(indices.total)) || 0,
+        payment: parseFloat(getValue(indices.payment)) || 0,
         status: getValue(indices.status) || 'Pending',
         assignedDoveEmail: getValue(indices.assignedDoveEmail)
       };
@@ -526,7 +529,7 @@ export async function updateStockCounts(
     // 1. Fetch the current sheet data to find row numbers and stock column index
     const rawData = await fetchSheetData(sheetId, sheetName);
     const headers = rawData[0].map(h => h.toLowerCase().trim());
-    
+
     const idColIndex = headers.indexOf('id');
     const stockColIndex = headers.indexOf('stock');
 
