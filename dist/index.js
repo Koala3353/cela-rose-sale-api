@@ -5,9 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
-const express_session_1 = __importDefault(require("express-session"));
-const ioredis_1 = __importDefault(require("ioredis"));
-const connect_redis_1 = require("connect-redis");
+// Session/cookie-based imports removed — using JWTs instead
 const dotenv_1 = __importDefault(require("dotenv"));
 const multer_1 = __importDefault(require("multer"));
 // Load environment variables as early as possible so modules that import
@@ -85,22 +83,7 @@ app.options('*', (req, res) => {
     console.log(`[CORS] Blocked preflight origin: ${origin}`);
     return res.sendStatus(403);
 });
-// Session middleware for cookie-based auth
-const SESSION_SECRET = process.env.SESSION_SECRET || 'rose-sale-dev-secret-change-in-production';
-const redisClient = new ioredis_1.default(process.env.REDIS_URL);
-app.use((0, express_session_1.default)({
-    store: new connect_redis_1.RedisStore({ client: redisClient }),
-    secret: SESSION_SECRET,
-    name: 'rose_session',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    },
-}));
+// Using stateless JWT authentication; no server-side session middleware configured.
 // Request logging middleware
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
@@ -172,20 +155,12 @@ app.post('/api/auth/google', async (req, res) => {
         }
         // Verify the token with Google
         const user = await (0, auth_1.verifyGoogleToken)(idToken);
-        // Store user in session
-        req.session.user = user;
-        // Ensure session is saved before responding so Set-Cookie is applied
-        req.session.save((err) => {
-            if (err) {
-                console.error('[Auth] Failed to save session after login:', err);
-            }
-            else {
-                console.log('[Auth] Session saved, sessionID=', req.sessionID);
-            }
-        });
+        // Create a JWT and return it to the client. Client should store the token
+        // and include it in Authorization: Bearer <token> for authenticated requests.
+        const token = (0, auth_1.createJwtToken)(user);
         // Track session in analytics
         (0, analytics_1.trackSession)(user.id);
-        console.log('[Auth] User logged in:', user.email, 'sessionID=', req.sessionID, 'cookies=', req.headers.cookie || 'none');
+        console.log('[Auth] User logged in:', user.email);
         res.json({
             success: true,
             data: {
@@ -195,6 +170,7 @@ app.post('/api/auth/google', async (req, res) => {
                     name: user.name,
                     photoUrl: user.picture,
                 },
+                token,
             },
         });
     }
@@ -211,63 +187,42 @@ app.post('/api/auth/google', async (req, res) => {
  * Destroy session and clear cookie
  */
 app.post('/api/auth/logout', (req, res) => {
-    const email = req.session?.user?.email;
-    req.session.destroy((err) => {
-        if (err) {
-            console.error('[Auth] Logout error:', err);
-            return res.status(500).json({
-                success: false,
-                error: 'Failed to logout',
-            });
-        }
-        res.clearCookie('rose_session');
-        console.log('[Auth] User logged out:', email);
-        res.json({
-            success: true,
-            message: 'Logged out successfully',
-        });
-    });
+    // With JWT-based auth, logout is handled on the client by deleting the token.
+    // We still provide this endpoint for compatibility; it simply returns success.
+    console.log('[Auth] Logout endpoint called');
+    res.json({ success: true, message: 'Logged out (client should remove token)' });
 });
 /**
  * GET /api/auth/me
  * Get current user from session
  */
-app.get('/api/auth/me', (req, res) => {
-    console.log('[Auth] /me called - sessionID=', req.sessionID, 'cookies=', req.headers.cookie || 'none', 'sessionExists=', !!req.session?.user);
-    if (!req.session?.user) {
-        return res.status(401).json({
-            success: false,
-            error: 'Not authenticated',
-        });
+app.get('/api/auth/me', auth_1.optionalAuth, (req, res) => {
+    const user = req.user;
+    console.log('[Auth] /me called - authHeader=', req.headers.authorization || 'none', 'user=', !!user);
+    if (!user) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
     }
     res.json({
         success: true,
-        data: {
-            user: {
-                id: req.session.user.id,
-                email: req.session.user.email,
-                name: req.session.user.name,
-                photoUrl: req.session.user.picture,
-            },
-        },
+        data: { user: { id: user.id, email: user.email, name: user.name, photoUrl: user.picture } },
     });
 });
 /**
  * GET /api/debug
- * Simple debugging endpoint to inspect incoming cookies and session on the server.
- * Call this from the browser (with credentials) to verify whether the cookie is being sent.
+ * Simple debugging endpoint to inspect incoming headers and auth info.
+ * Useful to confirm whether an Authorization header or cookies are being sent.
  */
 app.get('/api/debug', (req, res) => {
     try {
         const info = {
             headers: {
                 origin: req.headers.origin || null,
+                authorization: req.headers.authorization || null,
                 cookie: req.headers.cookie || null,
                 host: req.headers.host || null,
                 referer: req.headers.referer || null,
             },
-            sessionID: req.sessionID || null,
-            sessionUser: req.session?.user || null,
+            user: req.user || null,
         };
         console.log('[Debug] /api/debug called:', info);
         res.json({ success: true, data: info });

@@ -1,9 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-declare module 'express-session' {
-    interface SessionData {
-        user?: SessionUser;
-    }
-}
 export interface SessionUser {
     id: string;
     email: string;
@@ -15,12 +10,19 @@ export interface SessionUser {
  */
 export declare function verifyGoogleToken(idToken: string): Promise<SessionUser>;
 /**
- * Middleware to require authentication
- * Attaches req.user if session is valid
+ * Create a JWT for a user
+ */
+export declare function createJwtToken(user: SessionUser): string;
+/**
+ * Verify a JWT and return the payload as SessionUser
+ */
+export declare function verifyJwtToken(token?: string): SessionUser | null;
+/**
+ * Middleware to require auth via Authorization: Bearer <token>
  */
 export declare function requireAuth(req: Request, res: Response, next: NextFunction): void;
 /**
- * Optional auth middleware - attaches user if present but doesn't require it
+ * Optional auth middleware - attaches user if present
  */
 export declare function optionalAuth(req: Request, res: Response, next: NextFunction): void;
 //# sourceMappingURL=auth.d.ts.map
