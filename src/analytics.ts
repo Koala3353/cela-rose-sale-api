@@ -5,6 +5,9 @@
 
 import fs from 'fs';
 import path from 'path';
+import { appendToSheet, fetchSheetData } from './sheets';
+import dotenv from 'dotenv';
+dotenv.config();
 
 export interface AnalyticsData {
   // Page views
@@ -56,66 +59,66 @@ const analytics: AnalyticsData = {
   lastUpdatedAt: new Date().toISOString(),
 };
 
+const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID;
+const ANALYTICS_SHEET_NAME = 'Analytics';
+
 // File path for persisting analytics
 const ANALYTICS_FILE = path.join(__dirname, '../data/analytics.json');
 
-/**
- * Load analytics from file on startup
- */
-export function loadAnalytics(): void {
-  try {
-    // Ensure data directory exists
-    const dataDir = path.dirname(ANALYTICS_FILE);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
 
-    if (fs.existsSync(ANALYTICS_FILE)) {
-      const data = JSON.parse(fs.readFileSync(ANALYTICS_FILE, 'utf-8'));
-      analytics.homePageViews = data.homePageViews || 0;
-      analytics.shopPageViews = data.shopPageViews || 0;
-      analytics.productViews = data.productViews || 0;
-      analytics.uniqueUsers = new Set(data.uniqueUsers || []);
-      analytics.totalSessions = data.totalSessions || 0;
-      analytics.totalOrders = data.totalOrders || 0;
-      analytics.totalRevenue = data.totalRevenue || 0;
-      analytics.apiCalls = data.apiCalls || 0;
-      analytics.startedAt = data.startedAt || new Date().toISOString();
-      console.log('[Analytics] Loaded existing analytics data');
+/**
+ * Load analytics from Google Sheets 'Analytics' tab on startup
+ */
+export async function loadAnalytics(): Promise<void> {
+  try {
+    if (!GOOGLE_SHEET_ID) return;
+    const rows = await fetchSheetData(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME);
+    if (rows && rows.length > 1) {
+      // Use last row as latest snapshot
+      const last = rows[rows.length - 1];
+      analytics.homePageViews = Number(last[1]) || 0;
+      analytics.shopPageViews = Number(last[2]) || 0;
+      analytics.productViews = Number(last[3]) || 0;
+      analytics.uniqueUsers = new Set((last[4] || '').split(','));
+      analytics.totalSessions = Number(last[5]) || 0;
+      analytics.totalOrders = Number(last[6]) || 0;
+      analytics.totalRevenue = Number(last[7]) || 0;
+      analytics.apiCalls = Number(last[8]) || 0;
+      analytics.startedAt = last[9] || new Date().toISOString();
+      analytics.lastUpdatedAt = last[10] || new Date().toISOString();
+      console.log('[Analytics] Loaded analytics from Google Sheets');
     } else {
-      console.log('[Analytics] Starting with fresh analytics');
+      console.log('[Analytics] No analytics data found in Google Sheets');
     }
   } catch (error) {
-    console.error('[Analytics] Failed to load analytics:', error);
+    console.error('[Analytics] Failed to load analytics from Google Sheets:', error);
   }
 }
 
+
 /**
- * Save analytics to file
+ * Save analytics to Google Sheets 'Analytics' tab
  */
-export function saveAnalytics(): void {
+export async function saveAnalytics(): Promise<void> {
   try {
-    const dataDir = path.dirname(ANALYTICS_FILE);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-
-    const dataToSave = {
-      homePageViews: analytics.homePageViews,
-      shopPageViews: analytics.shopPageViews,
-      productViews: analytics.productViews,
-      uniqueUsers: Array.from(analytics.uniqueUsers),
-      totalSessions: analytics.totalSessions,
-      totalOrders: analytics.totalOrders,
-      totalRevenue: analytics.totalRevenue,
-      apiCalls: analytics.apiCalls,
-      startedAt: analytics.startedAt,
-      lastUpdatedAt: new Date().toISOString(),
-    };
-
-    fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(dataToSave, null, 2));
+    if (!GOOGLE_SHEET_ID) return;
+    const row: string[] = [
+      new Date().toISOString(),
+      String(analytics.homePageViews),
+      String(analytics.shopPageViews),
+      String(analytics.productViews),
+      Array.from(analytics.uniqueUsers).join(','),
+      String(analytics.totalSessions),
+      String(analytics.totalOrders),
+      String(analytics.totalRevenue),
+      String(analytics.apiCalls),
+      String(analytics.startedAt),
+      new Date().toISOString()
+    ];
+    await appendToSheet(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME, [row]);
+    console.log('[Analytics] Saved analytics snapshot to Google Sheets');
   } catch (error) {
-    console.error('[Analytics] Failed to save analytics:', error);
+    console.error('[Analytics] Failed to save analytics to Google Sheets:', error);
   }
 }
 
@@ -229,20 +232,8 @@ export function resetAnalytics(): void {
   saveAnalytics();
 }
 
+
 // Auto-save analytics every 5 minutes
 setInterval(() => {
   saveAnalytics();
 }, 5 * 60 * 1000);
-
-// Save analytics on process exit
-process.on('SIGINT', () => {
-  console.log('[Analytics] Saving analytics before exit...');
-  saveAnalytics();
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  console.log('[Analytics] Saving analytics before exit...');
-  saveAnalytics();
-  process.exit(0);
-});

@@ -477,7 +477,7 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
     
     // Append to Google Sheet
     try {
-      await appendToSheet(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, [orderRow]);
+  await appendToSheet(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, [orderRow], true); // Use queue for orders
       console.log('[API] Order saved to sheet:', orderId);
 
       // After saving the order, update stock counts

@@ -1,3 +1,55 @@
+// Order write queue
+type OrderWriteTask = {
+  sheetId: string;
+  sheetName: string;
+  rows: string[][];
+  resolve: (value: boolean) => void;
+  reject: (reason?: any) => void;
+};
+const orderWriteQueue: OrderWriteTask[] = [];
+let orderWriteActive = false;
+
+async function processOrderQueue() {
+  if (orderWriteActive || orderWriteQueue.length === 0) return;
+  orderWriteActive = true;
+  while (orderWriteQueue.length > 0) {
+    // Batch all tasks currently in the queue
+    const batch: OrderWriteTask[] = [];
+    while (orderWriteQueue.length > 0) {
+      batch.push(orderWriteQueue.shift()!);
+    }
+    if (batch.length === 0) break;
+    // Assume all tasks are for the same sheet/tab
+    const sheetId = batch[0].sheetId;
+    const sheetName = batch[0].sheetName;
+    const allRows = batch.flatMap(task => task.rows);
+    let attempts = 0;
+    let success = false;
+    while (attempts < 3 && !success) {
+      try {
+        await appendToSheet(sheetId, sheetName, allRows, false); // direct write, no queue
+        success = true;
+        batch.forEach(task => task.resolve(true));
+      } catch (err) {
+        attempts++;
+        if (attempts >= 3) {
+          batch.forEach(task => task.reject(err));
+        } else {
+          await new Promise(res => setTimeout(res, 1000 * attempts));
+        }
+      }
+    }
+    await new Promise(res => setTimeout(res, 500));
+  }
+  orderWriteActive = false;
+}
+
+export function queueOrderWrite(sheetId: string, sheetName: string, rows: string[][]): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    orderWriteQueue.push({ sheetId, sheetName, rows, resolve, reject });
+    processOrderQueue();
+  });
+}
 import { google } from 'googleapis';
 import { Readable } from 'stream';
 import { Product, FilterOptions } from './types';
@@ -204,42 +256,29 @@ export function extractFilterOptions(products: Product[]): FilterOptions {
  * Append rows to a Google Sheet (for orders)
  * Requires service account with write access to the sheet
  */
-export async function appendToSheet(
-  sheetId: string,
-  sheetName: string,
-  values: string[][]
-): Promise<boolean> {
+// Use queue for order writes, direct for others
+export async function appendToSheet(sheetId: string, sheetName: string, rows: string[][], useQueue = false): Promise<boolean> {
+  if (useQueue && sheetName.toLowerCase().includes('order')) {
+    return queueOrderWrite(sheetId, sheetName, rows);
+  }
   try {
     const auth = getAuth();
-    
-    if (!auth) {
-      throw new Error('Service account required for writing to sheets. API key is read-only.');
-    }
-    
-    const client = await auth.getClient();
-    const sheetsClient = google.sheets({ version: 'v4', auth: client as any });
-    
-    const response = await sheetsClient.spreadsheets.values.append({
+    if (!auth) throw new Error('No Google Sheets auth available');
+    const sheetsClient = google.sheets({ version: 'v4', auth });
+    await sheetsClient.spreadsheets.values.append({
       spreadsheetId: sheetId,
       range: sheetName,
       valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
       requestBody: {
-        values: values
-      }
+        values: rows,
+      },
     });
-    
-    console.log('[Sheets] Appended', values.length, 'row(s) to', sheetName);
-    console.log('[Sheets] Updated range:', response.data.updates?.updatedRange);
-    
     return true;
   } catch (error: any) {
-    console.error('[Sheets] Error appending data:', error);
-    if (error.response?.data) {
-      console.error('[Sheets] API response:', error.response.data);
-    }
-    throw new Error(`Failed to append to sheet: ${error.message}`);
+    console.error('[Sheets] Error appending to sheet:', error);
+    throw error;
   }
+}
 }
 
 /**
