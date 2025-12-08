@@ -174,9 +174,18 @@ app.post('/api/auth/google', async (req, res) => {
         const user = await (0, auth_1.verifyGoogleToken)(idToken);
         // Store user in session
         req.session.user = user;
+        // Ensure session is saved before responding so Set-Cookie is applied
+        req.session.save((err) => {
+            if (err) {
+                console.error('[Auth] Failed to save session after login:', err);
+            }
+            else {
+                console.log('[Auth] Session saved, sessionID=', req.sessionID);
+            }
+        });
         // Track session in analytics
         (0, analytics_1.trackSession)(user.id);
-        console.log('[Auth] User logged in:', user.email);
+        console.log('[Auth] User logged in:', user.email, 'sessionID=', req.sessionID, 'cookies=', req.headers.cookie || 'none');
         res.json({
             success: true,
             data: {
@@ -224,6 +233,7 @@ app.post('/api/auth/logout', (req, res) => {
  * Get current user from session
  */
 app.get('/api/auth/me', (req, res) => {
+    console.log('[Auth] /me called - sessionID=', req.sessionID, 'cookies=', req.headers.cookie || 'none', 'sessionExists=', !!req.session?.user);
     if (!req.session?.user) {
         return res.status(401).json({
             success: false,
@@ -241,6 +251,31 @@ app.get('/api/auth/me', (req, res) => {
             },
         },
     });
+});
+/**
+ * GET /api/debug
+ * Simple debugging endpoint to inspect incoming cookies and session on the server.
+ * Call this from the browser (with credentials) to verify whether the cookie is being sent.
+ */
+app.get('/api/debug', (req, res) => {
+    try {
+        const info = {
+            headers: {
+                origin: req.headers.origin || null,
+                cookie: req.headers.cookie || null,
+                host: req.headers.host || null,
+                referer: req.headers.referer || null,
+            },
+            sessionID: req.sessionID || null,
+            sessionUser: req.session?.user || null,
+        };
+        console.log('[Debug] /api/debug called:', info);
+        res.json({ success: true, data: info });
+    }
+    catch (err) {
+        console.error('[Debug] failed:', err);
+        res.status(500).json({ success: false, error: 'Debug failed' });
+    }
 });
 /**
  * GET /api/products
