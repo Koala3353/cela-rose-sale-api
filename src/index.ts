@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import session from 'express-session';
+import { EdgeConfigSessionStore } from './edgeConfigSessionStore';
 import dotenv from 'dotenv';
 import multer from 'multer';
 
@@ -79,6 +80,7 @@ app.use(session({
   name: 'rose_session',
   resave: false,
   saveUninitialized: false,
+  store: new EdgeConfigSessionStore({ prefix: 'sess:', ttl: 7 * 24 * 60 * 60 }),
   cookie: {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production', // HTTPS only in production
