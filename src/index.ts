@@ -1,7 +1,8 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import session from 'express-session';
-import { EdgeConfigSessionStore } from './edgeConfigSessionStore';
+import Redis from 'ioredis';
+import { RedisStore } from 'connect-redis';
 import dotenv from 'dotenv';
 import multer from 'multer';
 
@@ -75,12 +76,15 @@ app.use(cors({
 
 // Session middleware for cookie-based auth
 const SESSION_SECRET = process.env.SESSION_SECRET || 'rose-sale-dev-secret-change-in-production';
+
+const redisClient = new Redis(process.env.REDIS_URL as string);
+
 app.use(session({
+  store: new RedisStore({ client: redisClient }),
   secret: SESSION_SECRET,
   name: 'rose_session',
   resave: false,
   saveUninitialized: false,
-  store: new EdgeConfigSessionStore({ prefix: 'sess:', ttl: 7 * 24 * 60 * 60 }),
   cookie: {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production', // HTTPS only in production

@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const express_session_1 = __importDefault(require("express-session"));
+const ioredis_1 = __importDefault(require("ioredis"));
+const connect_redis_1 = require("connect-redis");
 const dotenv_1 = __importDefault(require("dotenv"));
 const multer_1 = __importDefault(require("multer"));
 // Load environment variables as early as possible so modules that import
@@ -61,7 +63,9 @@ app.use((0, cors_1.default)({
 }));
 // Session middleware for cookie-based auth
 const SESSION_SECRET = process.env.SESSION_SECRET || 'rose-sale-dev-secret-change-in-production';
+const redisClient = new ioredis_1.default(process.env.REDIS_URL);
 app.use((0, express_session_1.default)({
+    store: new connect_redis_1.RedisStore({ client: redisClient }),
     secret: SESSION_SECRET,
     name: 'rose_session',
     resave: false,
@@ -69,7 +73,7 @@ app.use((0, express_session_1.default)({
     cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
 }));
