@@ -280,7 +280,6 @@ export async function appendToSheet(sheetId: string, sheetName: string, rows: st
     throw error;
   }
 }
-}
 
 /**
  * Upload a file to Google Drive and return a shareable link
