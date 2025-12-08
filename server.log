@@ -1,0 +1,21 @@
+
+╔════════════════════════════════════════════════════════════╗
+║           🌹 Rose Sale API Server                          ║
+╠════════════════════════════════════════════════════════════╣
+║  Server running on: http://localhost:3001                  ║
+║  Cache TTL: 30000ms                                    ║
+╚════════════════════════════════════════════════════════════╝
+  
+[Sheets] Using service account: celadon-rose-sale-website@celadon-rose-sale.iam.gserviceaccount.com
+[Server] 📊 Analytics loaded
+[Server] Initializing cache...
+[Sheets] Parsed 8 products from sheet
+[Cache] Updated 'products' - expires in 30s
+[Cache] Updated 'filters' - expires in 30s
+[Cache] Auto-refresh enabled for 'products' every 30s
+[Server] Cache initialized successfully
+[Analytics] No analytics data found in Google Sheets
+[Cache] Auto-refreshing 'products'...
+[Sheets] Parsed 8 products from sheet
+[Cache] Updated 'filters' - expires in 30s
+[Cache] Updated 'products' - expires in 30s

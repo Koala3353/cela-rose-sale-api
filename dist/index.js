@@ -32,6 +32,11 @@ const upload = (0, multer_1.default)({
 });
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3001;
+// When running behind a proxy (like Vercel), trust the first proxy so
+// secure cookies and protocol detection work correctly.
+if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+}
 // Configuration
 const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID || '';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
@@ -61,6 +66,25 @@ app.use((0, cors_1.default)({
     },
     credentials: true
 }));
+// Ensure preflight OPTIONS requests are handled for all routes. This helps
+// avoid some "CORS request did not succeed" cases when a proxy or CDN
+// otherwise interferes with preflight. We reuse the same origin checker.
+app.options('*', (req, res) => {
+    const origin = req.header('Origin') || '';
+    if (!origin) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        return res.sendStatus(204);
+    }
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        return res.sendStatus(204);
+    }
+    console.log(`[CORS] Blocked preflight origin: ${origin}`);
+    return res.sendStatus(403);
+});
 // Session middleware for cookie-based auth
 const SESSION_SECRET = process.env.SESSION_SECRET || 'rose-sale-dev-secret-change-in-production';
 const redisClient = new ioredis_1.default(process.env.REDIS_URL);
@@ -542,18 +566,26 @@ app.get('/api/products/:id', async (req, res) => {
  * Track a page view from the frontend
  */
 app.post('/api/analytics/pageview', auth_1.optionalAuth, (req, res) => {
-    const { page } = req.body;
-    const sessionUser = req.user;
-    if (page === 'home') {
-        (0, analytics_1.trackHomePageView)(sessionUser?.id);
+    try {
+        const { page } = req.body;
+        const sessionUser = req.user;
+        console.log('[API] Analytics pageview:', { page, user: sessionUser?.id });
+        if (page === 'home') {
+            (0, analytics_1.trackHomePageView)(sessionUser?.id);
+        }
+        else if (page === 'shop') {
+            (0, analytics_1.trackShopPageView)(sessionUser?.id);
+        }
+        else if (page === 'product') {
+            (0, analytics_1.trackProductView)(req.body.productId, sessionUser?.id);
+        }
+        res.json({ success: true });
     }
-    else if (page === 'shop') {
-        (0, analytics_1.trackShopPageView)(sessionUser?.id);
+    catch (err) {
+        console.error('[API] Analytics tracking failed:', err);
+        // Return 200 to avoid breaking frontend analytics flow, but report failure
+        res.status(500).json({ success: false, error: err?.message || 'Analytics failed' });
     }
-    else if (page === 'product') {
-        (0, analytics_1.trackProductView)(req.body.productId, sessionUser?.id);
-    }
-    res.json({ success: true });
 });
 /**
  * GET /api/analytics

@@ -43,6 +43,11 @@ const upload = multer({
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// When running behind a proxy (like Vercel), trust the first proxy so
+// secure cookies and protocol detection work correctly.
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 // Configuration
 const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID || '';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
@@ -73,6 +78,26 @@ app.use(cors({
   },
   credentials: true
 }));
+
+// Ensure preflight OPTIONS requests are handled for all routes. This helps
+// avoid some "CORS request did not succeed" cases when a proxy or CDN
+// otherwise interferes with preflight. We reuse the same origin checker.
+app.options('*', (req, res) => {
+  const origin = req.header('Origin') || '';
+  if (!origin) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.sendStatus(204);
+  }
+  if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return res.sendStatus(204);
+  }
+  console.log(`[CORS] Blocked preflight origin: ${origin}`);
+  return res.sendStatus(403);
+});
 
 // Session middleware for cookie-based auth
 const SESSION_SECRET = process.env.SESSION_SECRET || 'rose-sale-dev-secret-change-in-production';
@@ -627,18 +652,25 @@ app.get('/api/products/:id', async (req: Request, res: Response) => {
  * Track a page view from the frontend
  */
 app.post('/api/analytics/pageview', optionalAuth, (req: Request, res: Response) => {
-  const { page } = req.body;
-  const sessionUser = (req as any).user as SessionUser | undefined;
-  
-  if (page === 'home') {
-    trackHomePageView(sessionUser?.id);
-  } else if (page === 'shop') {
-    trackShopPageView(sessionUser?.id);
-  } else if (page === 'product') {
-    trackProductView(req.body.productId, sessionUser?.id);
+  try {
+    const { page } = req.body;
+    const sessionUser = (req as any).user as SessionUser | undefined;
+    console.log('[API] Analytics pageview:', { page, user: sessionUser?.id });
+
+    if (page === 'home') {
+      trackHomePageView(sessionUser?.id);
+    } else if (page === 'shop') {
+      trackShopPageView(sessionUser?.id);
+    } else if (page === 'product') {
+      trackProductView(req.body.productId, sessionUser?.id);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] Analytics tracking failed:', err);
+    // Return 200 to avoid breaking frontend analytics flow, but report failure
+    res.status(500).json({ success: false, error: (err as any)?.message || 'Analytics failed' });
   }
-  
-  res.json({ success: true });
 });
 
 /**
