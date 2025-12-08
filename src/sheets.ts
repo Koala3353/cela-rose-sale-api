@@ -1,3 +1,7 @@
+import { google } from 'googleapis';
+import { Readable } from 'stream';
+import { Product, FilterOptions } from './types';
+
 // Order write queue
 type OrderWriteTask = {
   sheetId: string;
@@ -50,9 +54,6 @@ export function queueOrderWrite(sheetId: string, sheetName: string, rows: string
     processOrderQueue();
   });
 }
-import { google } from 'googleapis';
-import { Readable } from 'stream';
-import { Product, FilterOptions } from './types';
 
 // Include write scope for appending orders and Drive for file uploads
 const SCOPES = [
