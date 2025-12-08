@@ -1,13 +1,16 @@
-# Rose Sale API Server
+# 🌹 Rose Sale 2026 API Server
 
-A Node.js/Express API server that fetches product data from Google Sheets with built-in caching to avoid API rate limits.
+A Node.js/Express API server for the Celadon Rose Sale 2026 website. Handles product data, orders, authentication, and analytics with Google Sheets as the backend database.
 
 ## Features
 
 - 🔄 **Automatic Caching** - Updates every 30 seconds to avoid spamming Google Sheets API
+- 🔐 **Google OAuth** - Secure authentication with Google Sign-In
+- 📦 **Product Management** - Fetch products from Google Sheets with filtering
+- � **Order Processing** - Submit orders with automatic stock updates
+- 📎 **File Uploads** - Payment proof uploads to Google Drive
+- 📊 **Analytics** - Track page views, orders, revenue, and unique users
 - 🌐 **CORS Support** - Configurable allowed origins
-- 📦 **Product Endpoints** - Get all products, single product, and filter options
-- 📝 **Order Submission** - Submit orders (can be extended to write to sheets)
 - 💾 **Stale-While-Revalidate** - Serves cached data even when refresh fails
 
 ## Setup
@@ -21,59 +24,42 @@ npm install
 
 ### 2. Configure Environment
 
-Copy the example env file and fill in your values:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
+Create a `.env` file with the following:
 
 ```env
-# Your Google Sheet ID (from the URL)
-GOOGLE_SHEET_ID=1zroV5ASCbTRLWnkl1k1eKkJG992OZqhetdH9u48QZeU
-
-# Your Google API Key
+# Google Sheets Configuration
+GOOGLE_SHEET_ID=your_sheet_id_here
 GOOGLE_API_KEY=your_api_key_here
 
-# Sheet tab names
+# Sheet names
 PRODUCTS_SHEET_NAME=Products
 ORDERS_SHEET_NAME=Orders
 
-# Server port
+# Server Configuration
 PORT=3001
 
-# Cache TTL in milliseconds (30 seconds)
+# Cache Configuration (in milliseconds)
 CACHE_TTL=30000
 
-# Allowed origins for CORS
+# CORS - comma separated origins
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+
+# Session secret (use a long random string in production!)
+SESSION_SECRET=your-secure-random-string-here
+
+# Google OAuth Client ID
+GOOGLE_CLIENT_ID=your_google_oauth_client_id
+
+# Google Service Account (Base64 encoded JSON key)
+GOOGLE_SERVICE_ACCOUNT_KEY_BASE64=your_base64_encoded_service_account_key
 ```
 
-### 3. Google Sheets Setup
+### 3. Google Cloud Setup
 
-1. Create a Google Sheet with the following structure:
-
-#### Products Sheet Layout
-
-| Column | Header | Required | Description |
-|--------|--------|----------|-------------|
-| A | `id` | ✅ | Unique product ID (e.g., `rose-red`) |
-| B | `name` | ✅ | Product name |
-| C | `price` | ✅ | Price (number) |
-| D | `category` | ✅ | Category for grouping |
-| E | `stock` | ✅ | Available quantity |
-| F | `imageUrl` | ❌ | Image URL (auto-generated if empty) |
-| G | `description` | ❌ | Product description |
-| H | `tags` | ❌ | Comma-separated tags |
-| I | `available` | ❌ | `true`/`false` to show/hide |
-
-2. Make the sheet public: **Share → Anyone with link → Viewer**
-
-3. Get your API key from [Google Cloud Console](https://console.cloud.google.com/):
-   - Create/select a project
-   - Enable "Google Sheets API"
-   - Create an API key under Credentials
+1. **Google Sheets API** - Enable in Google Cloud Console
+2. **Google Drive API** - Enable for payment proof uploads
+3. **Service Account** - Create for writing to Sheets/Drive
+4. **OAuth Client ID** - Create for user authentication
 
 ### 4. Run the Server
 
@@ -90,62 +76,48 @@ npm start
 
 ## API Endpoints
 
-### `GET /health`
-Health check with cache statistics.
+### Health & Cache
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check with cache statistics |
+| POST | `/api/refresh` | Force refresh cache from Google Sheets |
 
-### `GET /api/products`
-Get all available products.
+### Authentication
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/google` | Login with Google ID token |
+| POST | `/api/auth/logout` | Logout and destroy session |
+| GET | `/api/auth/me` | Get current authenticated user |
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": [...products],
-  "cached": true,
-  "cacheAge": 15000
-}
-```
+### Products
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/products` | Get all available products |
+| GET | `/api/products/:id` | Get a single product by ID |
+| GET | `/api/filters` | Get filter options (categories, tags, price range) |
 
-### `GET /api/products/:id`
-Get a single product by ID.
+### Orders
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/orders` | Submit a new order (requires auth) |
+| GET | `/api/orders` | Get orders for authenticated user |
 
-### `GET /api/filters`
-Get available filter options (categories, tags, price range).
+### Analytics
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/analytics` | Get analytics snapshot |
+| POST | `/api/analytics/pageview` | Track a page view |
+| POST | `/api/analytics/reset` | Reset all analytics |
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "categories": ["Single", "Bouquet", "Bundle"],
-    "tags": ["flower", "romantic", "gift"],
-    "priceRange": { "min": 100, "max": 1000 }
-  }
-}
-```
+## Analytics Data
 
-### `POST /api/refresh`
-Force refresh the cache from Google Sheets.
+The analytics system tracks:
+- **Page Views**: Home page, shop page, product views
+- **Users**: Unique users and total sessions
+- **Orders**: Total orders and revenue
+- **API Usage**: Total API calls
 
-### `POST /api/orders`
-Submit a new order.
-
-**Body:**
-```json
-{
-  "email": "customer@email.com",
-  "purchaserName": "John Doe",
-  "cartItems": "Red Rose x2, Pink Tulip x1",
-  "total": 450
-}
-```
-
-## Cache Behavior
-
-- **TTL**: 30 seconds by default (configurable via `CACHE_TTL`)
-- **Auto-refresh**: Background updates every 30 seconds
-- **Stale-while-revalidate**: Returns cached data even if refresh fails
-- **Force refresh**: Use `POST /api/refresh` to manually update
+Data is stored in `data/analytics.json` and persists across server restarts.
 
 ## Project Structure
 
@@ -153,11 +125,33 @@ Submit a new order.
 rose-sale-api/
 ├── src/
 │   ├── index.ts      # Express server & routes
+│   ├── analytics.ts  # Analytics tracking module
+│   ├── auth.ts       # Google OAuth authentication
 │   ├── cache.ts      # Cache manager with auto-refresh
-│   ├── sheets.ts     # Google Sheets integration
+│   ├── sheets.ts     # Google Sheets/Drive integration
 │   └── types.ts      # TypeScript interfaces
-├── .env.example      # Environment template
+├── data/
+│   └── analytics.json # Persisted analytics data
+├── .env              # Environment variables
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
+
+## Deployment
+
+### Render.com (Recommended)
+
+1. Push to GitHub
+2. Create new Web Service on Render
+3. Connect your repo
+4. Configure:
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+5. Add environment variables from `.env`
+
+### Environment Variables for Production
+
+Make sure to update:
+- `SESSION_SECRET` - Use a secure random string
+- `ALLOWED_ORIGINS` - Add your production frontend URL

@@ -47,8 +47,13 @@ const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
 const PRODUCTS_SHEET_NAME = process.env.PRODUCTS_SHEET_NAME || 'Products';
 const ORDERS_SHEET_NAME = process.env.ORDERS_SHEET_NAME || 'Orders';
 
-// Parse allowed origins
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'];
+// Parse allowed origins - include GitHub Pages by default
+const defaultOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://koala3353.github.io'
+];
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || defaultOrigins;
 
 // Middleware
 app.use(express.json());
@@ -60,6 +65,7 @@ app.use(cors({
     if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.log(`[CORS] Blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -655,11 +661,37 @@ app.post('/api/analytics/reset', (req: Request, res: Response) => {
   });
 });
 
-// 404 handler
+// 404 handler - return list of available endpoints
 app.use((req: Request, res: Response) => {
   res.status(404).json({
     success: false,
-    error: 'Endpoint not found'
+    error: 'Endpoint not found',
+    requestedPath: req.path,
+    availableEndpoints: {
+      health: {
+        'GET /health': 'Health check with cache statistics'
+      },
+      auth: {
+        'POST /api/auth/google': 'Login with Google ID token',
+        'POST /api/auth/logout': 'Logout and destroy session',
+        'GET /api/auth/me': 'Get current authenticated user'
+      },
+      products: {
+        'GET /api/products': 'Get all available products',
+        'GET /api/products/:id': 'Get a single product by ID',
+        'GET /api/filters': 'Get filter options (categories, tags, price range)',
+        'POST /api/refresh': 'Force refresh cache from Google Sheets'
+      },
+      orders: {
+        'POST /api/orders': 'Submit a new order (requires auth)',
+        'GET /api/orders': 'Get orders for authenticated user'
+      },
+      analytics: {
+        'GET /api/analytics': 'Get analytics snapshot',
+        'POST /api/analytics/pageview': 'Track a page view',
+        'POST /api/analytics/reset': 'Reset all analytics'
+      }
+    }
   });
 });
 
