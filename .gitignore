@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.*
+*.json
+GOOGLE_SERVICE_ACCOUNT_KEY_BASE64
+*.log
+.DS_Store
+.vscode/
+npm-debug.log*
+*.tsbuildinfo

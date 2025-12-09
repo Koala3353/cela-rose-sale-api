@@ -36,7 +36,7 @@ export interface OrderPayload {
   room2: string;
   time2: string;
   cartItems: string;
-  bundleDetails: string;
+  bundleDetails?: string;
   advocacyDonation: number;
   msgBeneficiary: string;
   msgRecipient: string;

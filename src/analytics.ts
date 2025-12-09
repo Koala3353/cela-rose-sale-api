@@ -66,35 +66,74 @@ let saveTimeout: NodeJS.Timeout | null = null;
 const SAVE_DEBOUNCE_MS = 5000; // Save at most every 5 seconds
 
 /**
- * Initialize analytics - creates a new row for this server session
+ * Initialize analytics - finds existing row or creates a new one for this server session
  */
 export async function initAnalytics(): Promise<void> {
+  console.log('[Analytics] Initializing analytics...');
+  if (!GOOGLE_SHEET_ID) {
+    console.warn('[Analytics] ⚠️ GOOGLE_SHEET_ID is missing. Analytics will not be saved to Google Sheets.');
+    return;
+  }
+  console.log(`[Analytics] Using Sheet ID: ${GOOGLE_SHEET_ID.substring(0, 5)}...`);
+
   try {
-    if (!GOOGLE_SHEET_ID) return;
-
-    // Get current row count to determine our row number
+    // Get existing rows search for matching startedAt
+    console.log('[Analytics] Fetching "Analytics" sheet data...');
     const rows = await fetchSheetData(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME);
-    sessionRowNumber = rows.length + 1; // +1 for the new row we'll create
+    console.log(`[Analytics] Fetched ${rows.length} rows from Analytics sheet.`);
 
-    // Create initial row for this session
-    const row: string[] = [
-      analytics.startedAt, // Timestamp (startedAt)
-      '0', // homePageViews
-      '0', // shopPageViews
-      '0', // productViews
-      '0', // uniqueUsers
-      '0', // totalSessions
-      '0', // totalOrders
-      '0', // totalRevenue
-      '0', // apiCalls
-      analytics.startedAt, // startedAt
-      analytics.startedAt  // lastUpdatedAt
-    ];
+    // Search for an existing row with the same startedAt timestamp (column A or J)
+    // Row index in sheet = array index + 2 (1 for header, 1 for 0-based index)
+    let foundRowIndex = -1;
+    for (let i = 0; i < rows.length; i++) {
+      const rowData = rows[i];
+      // Check if the startedAt column (index 9, column J) matches OR first column matches
+      if (rowData && (rowData[0] === analytics.startedAt || rowData[9] === analytics.startedAt)) {
+        foundRowIndex = i;
 
-    await appendToSheet(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME, [row]);
-    console.log(`[Analytics] Created session row ${sessionRowNumber} in Google Sheets`);
-  } catch (error) {
-    console.error('[Analytics] Failed to initialize analytics:', error);
+        // Restore analytics state from the existing row
+        analytics.homePageViews = parseInt(rowData[1] || '0', 10);
+        analytics.shopPageViews = parseInt(rowData[2] || '0', 10);
+        analytics.productViews = parseInt(rowData[3] || '0', 10);
+        analytics.totalSessions = parseInt(rowData[5] || '0', 10);
+        analytics.totalOrders = parseInt(rowData[6] || '0', 10);
+        analytics.totalRevenue = parseFloat(rowData[7] || '0');
+        analytics.apiCalls = parseInt(rowData[8] || '0', 10);
+        if (rowData[9]) analytics.startedAt = rowData[9];
+
+        console.log(`[Analytics] Found existing session row at index ${i}, restored state`);
+        break;
+      }
+    }
+
+    if (foundRowIndex >= 0) {
+      // Use the existing row (add 2 for header row and 1-based indexing)
+      sessionRowNumber = foundRowIndex + 2;
+      console.log(`[Analytics] Resuming session row ${sessionRowNumber}`);
+    } else {
+      // Create a new row for this session
+      sessionRowNumber = rows.length + 2; // +2 for header row and 1-based indexing
+      console.log(`[Analytics] Creating new session at row ${sessionRowNumber}`);
+
+      const row: string[] = [
+        analytics.startedAt, // Timestamp (startedAt)
+        '0', // homePageViews
+        '0', // shopPageViews
+        '0', // productViews
+        '0', // uniqueUsers
+        '0', // totalSessions
+        '0', // totalOrders
+        '0', // totalRevenue
+        '0', // apiCalls
+        analytics.startedAt, // startedAt
+        analytics.startedAt  // lastUpdatedAt
+      ];
+
+      await appendToSheet(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME, [row]);
+      console.log(`[Analytics] ✅ Created new session row ${sessionRowNumber} in Google Sheets`);
+    }
+  } catch (error: any) {
+    console.error('[Analytics] ❌ Failed to initialize analytics (Check if "Analytics" tab exists):', error.message);
   }
 }
 
