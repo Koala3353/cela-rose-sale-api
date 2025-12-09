@@ -542,7 +542,8 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
     });
 
     // Track order in analytics
-    trackOrder(order.total || 0, sessionUser.id);
+    const itemsCount = (order.items || []).reduce((sum, item) => sum + item.quantity, 0);
+    trackOrder(order.total || 0, itemsCount, sessionUser.id);
 
     res.json({
       success: true,

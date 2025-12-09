@@ -18,6 +18,7 @@ export interface AnalyticsData {
   // Orders
   totalOrders: number;
   totalRevenue: number;
+  totalProductsSold: number;
 
   // API usage
   apiCalls: number;
@@ -50,8 +51,9 @@ const analytics: AnalyticsData = {
   totalSessions: 0,
   totalOrders: 0,
   totalRevenue: 0,
+  totalProductsSold: 0,
   apiCalls: 0,
-  startedAt: new Date().toISOString(),
+  startedAt: new Date().toISOString().split('T')[0], // Use YYYY-MM-DD as key for daily stats
   lastUpdatedAt: new Date().toISOString()
 };
 
@@ -103,6 +105,8 @@ export async function initAnalytics(): Promise<void> {
         analytics.totalRevenue = parseFloat(rowData[7] || '0');
         analytics.apiCalls = parseInt(rowData[8] || '0', 10);
         if (rowData[9]) analytics.startedAt = rowData[9];
+        // Column Index 11 (L) - Total Products Sold
+        analytics.totalProductsSold = parseInt(rowData[11] || '0', 10);
 
         console.log(`[Analytics] Found existing session row at index ${i}, restored state`);
         break;
@@ -129,7 +133,8 @@ export async function initAnalytics(): Promise<void> {
         '0', // totalRevenue
         '0', // apiCalls
         analytics.startedAt, // startedAt
-        analytics.startedAt  // lastUpdatedAt
+        analytics.startedAt,  // lastUpdatedAt
+        '0'  // totalProductsSold
       ];
 
       await appendToSheet(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME, [row]);
@@ -177,7 +182,8 @@ export async function saveAnalytics(): Promise<void> {
         String(analytics.totalRevenue),
         String(analytics.apiCalls),
         analytics.startedAt,
-        now
+        now,
+        String(analytics.totalProductsSold)
       ];
 
       await updateSheetRow(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME, sessionRowNumber, row);
@@ -236,9 +242,10 @@ export function trackSession(userId?: string): void {
 /**
  * Track an order
  */
-export function trackOrder(orderTotal: number, userId?: string): void {
+export function trackOrder(orderTotal: number, itemsCount: number, userId?: string): void {
   analytics.totalOrders++;
   analytics.totalRevenue += orderTotal;
+  analytics.totalProductsSold += itemsCount;
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
@@ -287,7 +294,8 @@ export function resetAnalytics(): void {
   analytics.totalSessions = 0;
   analytics.totalOrders = 0;
   analytics.totalRevenue = 0;
+  analytics.totalProductsSold = 0;
   analytics.apiCalls = 0;
-  analytics.startedAt = new Date().toISOString();
+  analytics.startedAt = new Date().toISOString().split('T')[0];
   analytics.lastUpdatedAt = new Date().toISOString();
 }
