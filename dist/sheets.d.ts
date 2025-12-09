@@ -22,9 +22,18 @@ export declare function extractFilterOptions(products: Product[]): FilterOptions
  */
 export declare function appendToSheet(sheetId: string, sheetName: string, rows: string[][], useQueue?: boolean): Promise<boolean>;
 /**
+ * Update a specific row in a Google Sheet
+ * Used for analytics to update the same row instead of appending
+ */
+export declare function updateSheetRow(sheetId: string, sheetName: string, rowNumber: number, values: string[]): Promise<boolean>;
+/**
  * Upload a file to Google Drive and return a shareable link
- * The file will be uploaded to a folder (if GOOGLE_DRIVE_FOLDER_ID is set)
- * and made publicly viewable
+ *
+ * IMPORTANT: Service Accounts have no storage quota in regular Drive.
+ * They can only upload to Shared Drives (Team Drives).
+ *
+ * Set GOOGLE_DRIVE_FOLDER_ID to a folder ID inside a Shared Drive
+ * that the service account has access to.
  */
 export declare function uploadFileToDrive(fileBuffer: Buffer, fileName: string, mimeType: string): Promise<string>;
 /**
@@ -57,7 +66,9 @@ export interface SheetOrder {
     msgRecipient: string;
     notes: string;
     total: number;
+    payment: number;
     status: string;
+    paymentConfirmed: boolean;
     assignedDoveEmail: string;
 }
 /**

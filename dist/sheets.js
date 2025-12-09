@@ -5,6 +5,7 @@ exports.fetchSheetData = fetchSheetData;
 exports.parseProductsData = parseProductsData;
 exports.extractFilterOptions = extractFilterOptions;
 exports.appendToSheet = appendToSheet;
+exports.updateSheetRow = updateSheetRow;
 exports.uploadFileToDrive = uploadFileToDrive;
 exports.fetchUserOrdersFromSheet = fetchUserOrdersFromSheet;
 exports.updateStockCounts = updateStockCounts;
@@ -259,9 +260,42 @@ async function appendToSheet(sheetId, sheetName, rows, useQueue = false) {
     }
 }
 /**
+ * Update a specific row in a Google Sheet
+ * Used for analytics to update the same row instead of appending
+ */
+async function updateSheetRow(sheetId, sheetName, rowNumber, values) {
+    try {
+        const auth = getAuth();
+        if (!auth)
+            throw new Error('No Google Sheets auth available');
+        const sheetsClient = googleapis_1.google.sheets({ version: 'v4', auth });
+        // Update the specific row. Dynamically calculate end column to support more fields.
+        // Assuming less than 26 columns for now. If more, we need columnToLetter helper.
+        const endColChar = String.fromCharCode(65 + (values.length - 1)); // 0->A, 11->L
+        const range = `${sheetName}!A${rowNumber}:${endColChar}${rowNumber}`;
+        await sheetsClient.spreadsheets.values.update({
+            spreadsheetId: sheetId,
+            range: range,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: {
+                values: [values],
+            },
+        });
+        return true;
+    }
+    catch (error) {
+        console.error('[Sheets] Error updating row:', error);
+        throw error;
+    }
+}
+/**
  * Upload a file to Google Drive and return a shareable link
- * The file will be uploaded to a folder (if GOOGLE_DRIVE_FOLDER_ID is set)
- * and made publicly viewable
+ *
+ * IMPORTANT: Service Accounts have no storage quota in regular Drive.
+ * They can only upload to Shared Drives (Team Drives).
+ *
+ * Set GOOGLE_DRIVE_FOLDER_ID to a folder ID inside a Shared Drive
+ * that the service account has access to.
  */
 async function uploadFileToDrive(fileBuffer, fileName, mimeType) {
     try {
@@ -269,22 +303,22 @@ async function uploadFileToDrive(fileBuffer, fileName, mimeType) {
         if (!auth) {
             throw new Error('Service account required for uploading to Drive');
         }
+        const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+        if (!folderId) {
+            throw new Error('GOOGLE_DRIVE_FOLDER_ID environment variable is required. Service accounts must upload to a Shared Drive folder.');
+        }
         const client = await auth.getClient();
         const driveClient = googleapis_1.google.drive({ version: 'v3', auth: client });
         // Convert buffer to readable stream
         const stream = new stream_1.Readable();
         stream.push(fileBuffer);
         stream.push(null);
-        // File metadata
+        // File metadata - must specify parent folder in Shared Drive
         const fileMetadata = {
             name: fileName,
+            parents: [folderId],
         };
-        // Optionally put in a specific folder
-        const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-        if (folderId) {
-            fileMetadata.parents = [folderId];
-        }
-        // Upload the file
+        // Upload the file with Shared Drive support
         const response = await driveClient.files.create({
             requestBody: fileMetadata,
             media: {
@@ -292,22 +326,32 @@ async function uploadFileToDrive(fileBuffer, fileName, mimeType) {
                 body: stream,
             },
             fields: 'id, webViewLink, webContentLink',
+            supportsAllDrives: true, // Required for Shared Drives
         });
         const fileId = response.data.id;
         if (!fileId) {
             throw new Error('No file ID returned from upload');
         }
         // Make the file publicly viewable
-        await driveClient.permissions.create({
-            fileId: fileId,
-            requestBody: {
-                role: 'reader',
-                type: 'anyone',
-            },
-        });
+        // Note: For Shared Drives, the folder's sharing settings may already allow this
+        try {
+            await driveClient.permissions.create({
+                fileId: fileId,
+                requestBody: {
+                    role: 'reader',
+                    type: 'anyone',
+                },
+                supportsAllDrives: true, // Required for Shared Drives
+            });
+        }
+        catch (permError) {
+            // Permission creation might fail if the Shared Drive already handles sharing
+            // This is okay - the file will still be accessible via the drive's settings
+            console.warn('[Drive] Could not create public permission (may be handled by Shared Drive settings):', permError.message);
+        }
         // Get the shareable link
         const fileLink = `https://drive.google.com/file/d/${fileId}/view`;
-        console.log('[Drive] Uploaded file:', fileName, '-> ', fileLink);
+        console.log('[Drive] Uploaded file:', fileName, '->', fileLink);
         return fileLink;
     }
     catch (error) {
@@ -365,6 +409,7 @@ async function fetchUserOrdersFromSheet(sheetId, sheetName, userEmail, apiKey) {
             msgRecipient: getIndex(['messageforrecipient', 'msgrecipient', 'recipientmessage']),
             notes: getIndex(['notes', 'specialrequests']),
             total: getIndex(['total', 'amount', 'price']),
+            payment: 20, // Column U (21st column, 0-indexed = 20)
             status: getIndex(['status']),
             assignedDoveEmail: getIndex(['assigneddoveemail', 'assigneddove', 'dove'])
         };
@@ -406,7 +451,9 @@ async function fetchUserOrdersFromSheet(sheetId, sheetName, userEmail, apiKey) {
                 msgRecipient: getValue(indices.msgRecipient),
                 notes: getValue(indices.notes),
                 total: parseFloat(getValue(indices.total)) || 0,
+                payment: parseFloat(getValue(indices.payment)) || 0,
                 status: getValue(indices.status) || 'Pending',
+                paymentConfirmed: (getValue(25) || 'FALSE').toUpperCase() === 'TRUE',
                 assignedDoveEmail: getValue(indices.assignedDoveEmail)
             };
             orders.push(order);

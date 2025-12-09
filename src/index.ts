@@ -11,7 +11,7 @@ dotenv.config();
 
 import { cache } from './cache';
 import { fetchSheetData, parseProductsData, extractFilterOptions, appendToSheet, updateStockCounts, fetchUserOrdersFromSheet, SheetOrder } from './sheets';
-import { uploadToImgBB } from './imgbb';
+import { uploadToCloudinary } from './cloudinary';
 import { Product, ApiResponse, FilterOptions, OrderPayload } from './types';
 import { verifyGoogleToken, requireAuth, optionalAuth, SessionUser, createJwtToken } from './auth';
 import {
@@ -441,17 +441,17 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
     const orderId = 'ORD-' + Math.random().toString(36).substring(2, 11).toUpperCase();
     const timestamp = new Date().toISOString();
 
-    // Upload payment proof to Imgur if provided
+    // Upload payment proof to Cloudinary if provided
     let paymentProofLink = '';
     if (uploadedFile) {
       try {
         const fileName = `${orderId}_proof_${Date.now()}`;
-        paymentProofLink = await uploadToImgBB(
+        paymentProofLink = await uploadToCloudinary(
           uploadedFile.buffer,
           fileName
         );
       } catch (uploadError: any) {
-        console.error('[API] Failed to upload payment proof:', uploadError.message);
+        console.error('[API] Failed to upload payment proof to Cloudinary:', uploadError.message);
         // Continue without the link - order is still valid
       }
     }

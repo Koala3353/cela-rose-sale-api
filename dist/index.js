@@ -13,6 +13,7 @@ const multer_1 = __importDefault(require("multer"));
 dotenv_1.default.config();
 const cache_1 = require("./cache");
 const sheets_1 = require("./sheets");
+const cloudinary_1 = require("./cloudinary");
 const auth_1 = require("./auth");
 const analytics_1 = require("./analytics");
 // Configure multer for file uploads (store in memory)
@@ -386,55 +387,67 @@ app.post('/api/orders', upload.single('paymentProof'), auth_1.requireAuth, async
         // Generate order ID
         const orderId = 'ORD-' + Math.random().toString(36).substring(2, 11).toUpperCase();
         const timestamp = new Date().toISOString();
-        // Upload payment proof to Google Drive if provided
+        // Upload payment proof to Cloudinary if provided
         let paymentProofLink = '';
         if (uploadedFile) {
             try {
-                const fileName = `${orderId}_payment_${Date.now()}_${uploadedFile.originalname}`;
-                paymentProofLink = await (0, sheets_1.uploadFileToDrive)(uploadedFile.buffer, fileName, uploadedFile.mimetype);
+                const fileName = `${orderId}_proof_${Date.now()}`;
+                paymentProofLink = await (0, cloudinary_1.uploadToCloudinary)(uploadedFile.buffer, fileName);
             }
             catch (uploadError) {
-                console.error('[API] Failed to upload payment proof:', uploadError.message);
-                // Continue without the link
+                console.error('[API] Failed to upload payment proof to Cloudinary:', uploadError.message);
+                // Continue without the link - order is still valid
             }
         }
         // Build the row to append to the orders sheet
         // Columns should match your "Orders" sheet headers
+        // A-T: orderId, timestamp, email, purchaserName, studentId, contactNumber, facebookLink,
+        //      recipientName, recipientContact, recipientFbLink, anonymous,
+        //      deliveryDate1, time1, venue1, room1, deliveryDate2, time2, venue2, room2, cartItems
+        // U: total, V: advocacyDonation, W: msgBeneficiary, X: msgRecipient, Y: notes, Z: Status
+        // AA-AB: Reserved for Google Apps Script, AC: paymentProofLink
         const orderRow = [
-            orderId,
-            timestamp,
-            email,
-            purchaserName,
-            order.studentId || '',
-            order.contactNumber || '',
-            order.facebookLink || '',
-            order.recipientName || '',
-            order.recipientContact || '',
-            order.recipientFbLink || '',
-            order.anonymous ? 'Yes' : 'No',
+            orderId, // A
+            timestamp, // B
+            email, // C
+            purchaserName, // D
+            order.studentId || '', // E
+            order.contactNumber || '', // F
+            order.facebookLink || '', // G
+            order.recipientName || '', // H
+            order.recipientContact || '', // I
+            order.recipientFbLink || '', // J
+            order.anonymous ? 'Yes' : 'No', // K
             // Delivery 1
-            order.deliveryDate1 || '',
-            order.time1 || '',
-            order.venue1 || '',
-            order.room1 || '',
+            order.deliveryDate1 || '', // L
+            order.time1 || '', // M
+            order.venue1 || '', // N
+            order.room1 || '', // O
             // Delivery 2
-            order.deliveryDate2 || '',
-            order.time2 || '',
-            order.venue2 || '',
-            order.room2 || '',
-            // Items and details
-            order.cartItems || '',
-            order.bundleDetails || '',
-            String(order.advocacyDonation || 0),
-            order.msgBeneficiary || '',
-            order.msgRecipient || '',
-            order.notes || '',
-            String(order.total || 0),
-            'Pending', // Status
-            paymentProofLink // Payment Proof Link
+            order.deliveryDate2 || '', // P
+            order.time2 || '', // Q
+            order.venue2 || '', // R
+            order.room2 || '', // S
+            // Items and total
+            order.cartItems || '', // T
+            String(order.total || 0), // U - Total cost
+            String(order.advocacyDonation || 0), // V
+            order.msgBeneficiary || '', // W
+            order.msgRecipient || '', // X
+            order.notes || '', // Y
+            'FALSE', // Z - Confirmed Payment (False by default)
+            'Pending', // AA - Status
+            '', // AB - Reserved for Google Apps Script
+            paymentProofLink // AC - Payment Proof Link
         ];
         // Append to Google Sheet
         try {
+            console.log('[API] Order Row generated:', orderRow);
+            console.log(`[API] Row length: ${orderRow.length}`);
+            console.log(`[API] Index 19 (Cart): "${orderRow[19]}"`);
+            console.log(`[API] Index 20 (Total): "${orderRow[20]}" (Should be Column U)`);
+            console.log(`[API] Index 21 (Advocacy): "${orderRow[21]}"`);
+            console.log(`[API] Index 26 (Status): "${orderRow[26]}" (Should be Column AA)`);
             await (0, sheets_1.appendToSheet)(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, [orderRow], true); // Use queue for orders
             console.log('[API] Order saved to sheet:', orderId);
             // After saving the order, update stock counts
@@ -466,7 +479,8 @@ app.post('/api/orders', upload.single('paymentProof'), auth_1.requireAuth, async
             items: order.cartItems
         });
         // Track order in analytics
-        (0, analytics_1.trackOrder)(order.total || 0, sessionUser.id);
+        const itemsCount = (order.items || []).reduce((sum, item) => sum + item.quantity, 0);
+        (0, analytics_1.trackOrder)(order.total || 0, itemsCount, sessionUser.id);
         res.json({
             success: true,
             data: {
@@ -599,6 +613,19 @@ app.post('/api/analytics/reset', (req, res) => {
         message: 'Analytics reset successfully'
     });
 });
+// Debug analytics route
+app.get('/api/debug/analytics', async (req, res) => {
+    try {
+        if (!GOOGLE_SHEET_ID)
+            throw new Error('No Sheet ID');
+        const testRow = [new Date().toISOString(), 'TEST_WRITE', 'Check', 'If', 'Working'];
+        await (0, sheets_1.appendToSheet)(GOOGLE_SHEET_ID, 'Analytics', [testRow]);
+        res.json({ success: true, message: 'Wrote test row to Analytics sheet' });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message, stack: error.stack });
+    }
+});
 // 404 handler - return list of available endpoints
 app.use((req, res) => {
     res.status(404).json({
@@ -651,7 +678,7 @@ app.listen(PORT, async () => {
 ╚════════════════════════════════════════════════════════════╝
   `);
     // Load analytics data
-    (0, analytics_1.loadAnalytics)();
+    await (0, analytics_1.initAnalytics)();
     console.log('[Server] 📊 Analytics loaded');
     // Validate configuration
     if (!GOOGLE_SHEET_ID || !GOOGLE_API_KEY) {
