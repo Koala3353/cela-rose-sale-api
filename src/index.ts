@@ -445,8 +445,7 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
     let paymentProofLink = '';
     if (uploadedFile) {
       try {
-        const ext = path.extname(uploadedFile.originalname) || '.png';
-        const fileName = `${orderId}_proof_${Date.now()}${ext}`;
+        const fileName = `${orderId}_proof_${Date.now()}`;
         paymentProofLink = await uploadToImgBB(
           uploadedFile.buffer,
           fileName
@@ -493,10 +492,10 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
       order.msgBeneficiary || '',       // W
       order.msgRecipient || '',         // X
       order.notes || '',                // Y
-      'Pending',                        // Z - Status
-      '',                               // AA - Reserved for Google Apps Script
+      '',                               // Z - Blank
+      'Pending',                        // AA - Status
       '',                               // AB - Reserved for Google Apps Script
-      paymentProofLink ? `=HYPERLINK("${paymentProofLink}", "View Proof")` : ''                  // AC - Payment Proof Link
+      paymentProofLink                  // AC - Payment Proof Link
     ];
 
     // Append to Google Sheet
