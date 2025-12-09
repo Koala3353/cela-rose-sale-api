@@ -282,6 +282,34 @@ export async function appendToSheet(sheetId: string, sheetName: string, rows: st
 }
 
 /**
+ * Update a specific row in a Google Sheet
+ * Used for analytics to update the same row instead of appending
+ */
+export async function updateSheetRow(sheetId: string, sheetName: string, rowNumber: number, values: string[]): Promise<boolean> {
+  try {
+    const auth = getAuth();
+    if (!auth) throw new Error('No Google Sheets auth available');
+    const sheetsClient = google.sheets({ version: 'v4', auth });
+
+    // Update the specific row (A{rowNumber}:K{rowNumber} for analytics columns)
+    const range = `${sheetName}!A${rowNumber}:K${rowNumber}`;
+
+    await sheetsClient.spreadsheets.values.update({
+      spreadsheetId: sheetId,
+      range: range,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [values],
+      },
+    });
+    return true;
+  } catch (error: any) {
+    console.error('[Sheets] Error updating row:', error);
+    throw error;
+  }
+}
+
+/**
  * Upload a file to Google Drive and return a shareable link
  * 
  * IMPORTANT: Service Accounts have no storage quota in regular Drive.

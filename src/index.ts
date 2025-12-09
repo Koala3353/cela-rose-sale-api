@@ -14,7 +14,7 @@ import { uploadToImgur } from './imgur';
 import { Product, ApiResponse, FilterOptions, OrderPayload } from './types';
 import { verifyGoogleToken, requireAuth, optionalAuth, SessionUser, createJwtToken } from './auth';
 import {
-  loadAnalytics,
+  initAnalytics,
   saveAnalytics,
   trackHomePageView,
   trackShopPageView,
@@ -740,7 +740,7 @@ app.listen(PORT, async () => {
   `);
 
   // Load analytics data
-  loadAnalytics();
+  initAnalytics();
   console.log('[Server] 📊 Analytics loaded');
 
   // Validate configuration

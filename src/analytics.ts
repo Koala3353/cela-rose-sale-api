@@ -1,14 +1,10 @@
-/**
- * Analytics Module
- * Tracks usage statistics for the Rose Sale API
- */
-
-import fs from 'fs';
 import path from 'path';
-import { appendToSheet, fetchSheetData } from './sheets';
-import dotenv from 'dotenv';
-dotenv.config();
+import { fetchSheetData, appendToSheet, updateSheetRow } from './sheets';
 
+/**
+ * In-memory analytics data store
+ * Now each server session creates ONE row that gets updated (not appended)
+ */
 export interface AnalyticsData {
   // Page views
   homePageViews: number;
@@ -45,7 +41,7 @@ export interface AnalyticsSnapshot {
   uptimeSeconds: number;
 }
 
-// In-memory analytics store
+// In-memory analytics for this session
 const analytics: AnalyticsData = {
   homePageViews: 0,
   shopPageViews: 0,
@@ -56,73 +52,87 @@ const analytics: AnalyticsData = {
   totalRevenue: 0,
   apiCalls: 0,
   startedAt: new Date().toISOString(),
-  lastUpdatedAt: new Date().toISOString(),
+  lastUpdatedAt: new Date().toISOString()
 };
 
 const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const ANALYTICS_SHEET_NAME = 'Analytics';
 
-// File path for persisting analytics
-const ANALYTICS_FILE = path.join(__dirname, '../data/analytics.json');
+// Track the row number for this session (set when we first save)
+let sessionRowNumber: number | null = null;
 
+// Debounce saves to avoid rate limiting
+let saveTimeout: NodeJS.Timeout | null = null;
+const SAVE_DEBOUNCE_MS = 5000; // Save at most every 5 seconds
 
 /**
- * Load analytics from Google Sheets 'Analytics' tab on startup
+ * Initialize analytics - creates a new row for this server session
  */
-export async function loadAnalytics(): Promise<void> {
+export async function initAnalytics(): Promise<void> {
   try {
     if (!GOOGLE_SHEET_ID) return;
+
+    // Get current row count to determine our row number
     const rows = await fetchSheetData(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME);
-    if (rows && rows.length > 1) {
-      // Use last row as latest snapshot
-      const last = rows[rows.length - 1];
-      analytics.homePageViews = Number(last[1]) || 0;
-      analytics.shopPageViews = Number(last[2]) || 0;
-      analytics.productViews = Number(last[3]) || 0;
-      // Column E now stores just the count, not comma-separated IDs
-      // We can't restore individual user IDs from count, so just track the count
-      const storedCount = Number(last[4]) || 0;
-      // Keep existing unique users in memory, the count is just for persistence
-      analytics.totalSessions = Number(last[5]) || 0;
-      analytics.totalOrders = Number(last[6]) || 0;
-      analytics.totalRevenue = Number(last[7]) || 0;
-      analytics.apiCalls = Number(last[8]) || 0;
-      analytics.startedAt = last[9] || new Date().toISOString();
-      analytics.lastUpdatedAt = last[10] || new Date().toISOString();
-      console.log('[Analytics] Loaded analytics from Google Sheets');
-    } else {
-      console.log('[Analytics] No analytics data found in Google Sheets');
-    }
+    sessionRowNumber = rows.length + 1; // +1 for the new row we'll create
+
+    // Create initial row for this session
+    const row: string[] = [
+      analytics.startedAt, // Timestamp (startedAt)
+      '0', // homePageViews
+      '0', // shopPageViews
+      '0', // productViews
+      '0', // uniqueUsers
+      '0', // totalSessions
+      '0', // totalOrders
+      '0', // totalRevenue
+      '0', // apiCalls
+      analytics.startedAt, // startedAt
+      analytics.startedAt  // lastUpdatedAt
+    ];
+
+    await appendToSheet(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME, [row]);
+    console.log(`[Analytics] Created session row ${sessionRowNumber} in Google Sheets`);
   } catch (error) {
-    console.error('[Analytics] Failed to load analytics from Google Sheets:', error);
+    console.error('[Analytics] Failed to initialize analytics:', error);
   }
 }
 
-
 /**
- * Save analytics to Google Sheets 'Analytics' tab
+ * Save analytics by updating the same row (not appending)
  */
 export async function saveAnalytics(): Promise<void> {
-  try {
-    if (!GOOGLE_SHEET_ID) return;
-    const row: string[] = [
-      new Date().toISOString(),
-      String(analytics.homePageViews),
-      String(analytics.shopPageViews),
-      String(analytics.productViews),
-      String(analytics.uniqueUsers.size), // Store count instead of IDs to avoid char limit
-      String(analytics.totalSessions),
-      String(analytics.totalOrders),
-      String(analytics.totalRevenue),
-      String(analytics.apiCalls),
-      String(analytics.startedAt),
-      new Date().toISOString()
-    ];
-    await appendToSheet(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME, [row]);
-    console.log('[Analytics] Saved analytics snapshot to Google Sheets');
-  } catch (error) {
-    console.error('[Analytics] Failed to save analytics to Google Sheets:', error);
+  // Debounce saves
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
   }
+
+  saveTimeout = setTimeout(async () => {
+    try {
+      if (!GOOGLE_SHEET_ID || !sessionRowNumber) return;
+
+      const now = new Date().toISOString();
+      const row: string[] = [
+        analytics.startedAt, // Timestamp (keep original startedAt)
+        String(analytics.homePageViews),
+        String(analytics.shopPageViews),
+        String(analytics.productViews),
+        String(analytics.uniqueUsers.size),
+        String(analytics.totalSessions),
+        String(analytics.totalOrders),
+        String(analytics.totalRevenue),
+        String(analytics.apiCalls),
+        analytics.startedAt,
+        now
+      ];
+
+      await updateSheetRow(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME, sessionRowNumber, row);
+      analytics.lastUpdatedAt = now;
+      console.log(`[Analytics] Updated session row ${sessionRowNumber}`);
+    } catch (error) {
+      console.error('[Analytics] Failed to save analytics:', error);
+    }
+  }, SAVE_DEBOUNCE_MS);
 }
 
 /**
@@ -130,7 +140,6 @@ export async function saveAnalytics(): Promise<void> {
  */
 export function trackHomePageView(userId?: string): void {
   analytics.homePageViews++;
-  analytics.lastUpdatedAt = new Date().toISOString();
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
@@ -142,7 +151,6 @@ export function trackHomePageView(userId?: string): void {
  */
 export function trackShopPageView(userId?: string): void {
   analytics.shopPageViews++;
-  analytics.lastUpdatedAt = new Date().toISOString();
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
@@ -152,9 +160,8 @@ export function trackShopPageView(userId?: string): void {
 /**
  * Track a product view
  */
-export function trackProductView(productId?: string, userId?: string): void {
+export function trackProductView(productId: string, userId?: string): void {
   analytics.productViews++;
-  analytics.lastUpdatedAt = new Date().toISOString();
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
@@ -166,7 +173,6 @@ export function trackProductView(productId?: string, userId?: string): void {
  */
 export function trackSession(userId?: string): void {
   analytics.totalSessions++;
-  analytics.lastUpdatedAt = new Date().toISOString();
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
@@ -174,12 +180,11 @@ export function trackSession(userId?: string): void {
 }
 
 /**
- * Track a new order
+ * Track an order
  */
-export function trackOrder(total: number, userId?: string): void {
+export function trackOrder(orderTotal: number, userId?: string): void {
   analytics.totalOrders++;
-  analytics.totalRevenue += total;
-  analytics.lastUpdatedAt = new Date().toISOString();
+  analytics.totalRevenue += orderTotal;
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
@@ -191,12 +196,11 @@ export function trackOrder(total: number, userId?: string): void {
  */
 export function trackApiCall(): void {
   analytics.apiCalls++;
-  // Don't save on every API call to avoid too many writes
-  // Save periodically instead
+  // Don't save on every API call - let other tracking functions trigger saves
 }
 
 /**
- * Get a snapshot of current analytics
+ * Get current analytics snapshot
  */
 export function getAnalyticsSnapshot(): AnalyticsSnapshot {
   const now = new Date();
@@ -219,7 +223,7 @@ export function getAnalyticsSnapshot(): AnalyticsSnapshot {
 }
 
 /**
- * Reset analytics (for testing or new period)
+ * Reset analytics (for testing)
  */
 export function resetAnalytics(): void {
   analytics.homePageViews = 0;
@@ -232,11 +236,4 @@ export function resetAnalytics(): void {
   analytics.apiCalls = 0;
   analytics.startedAt = new Date().toISOString();
   analytics.lastUpdatedAt = new Date().toISOString();
-  saveAnalytics();
 }
-
-
-// Auto-save analytics every 5 minutes
-setInterval(() => {
-  saveAnalytics();
-}, 5 * 60 * 1000);
