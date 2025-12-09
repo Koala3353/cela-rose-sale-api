@@ -492,7 +492,7 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
       order.msgBeneficiary || '',       // W
       order.msgRecipient || '',         // X
       order.notes || '',                // Y
-      '',                               // Z - Blank
+      'FALSE',                          // Z - Confirmed Payment (False by default)
       'Pending',                        // AA - Status
       '',                               // AB - Reserved for Google Apps Script
       paymentProofLink                  // AC - Payment Proof Link

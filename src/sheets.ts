@@ -431,6 +431,7 @@ export interface SheetOrder {
   total: number;
   payment: number;
   status: string;
+  paymentConfirmed: boolean;
   assignedDoveEmail: string;
 }
 
@@ -537,6 +538,7 @@ export async function fetchUserOrdersFromSheet(
         total: parseFloat(getValue(indices.total)) || 0,
         payment: parseFloat(getValue(indices.payment)) || 0,
         status: getValue(indices.status) || 'Pending',
+        paymentConfirmed: (getValue(25) || 'FALSE').toUpperCase() === 'TRUE',
         assignedDoveEmail: getValue(indices.assignedDoveEmail)
       };
 

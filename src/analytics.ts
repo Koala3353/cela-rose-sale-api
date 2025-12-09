@@ -35,6 +35,7 @@ export interface AnalyticsSnapshot {
   uniqueUsersCount: number;
   totalSessions: number;
   totalOrders: number;
+  totalProductsSold: number;
   totalRevenue: number;
   apiCalls: number;
   startedAt: string;
@@ -275,6 +276,7 @@ export function getAnalyticsSnapshot(): AnalyticsSnapshot {
     uniqueUsersCount: analytics.uniqueUsers.size,
     totalSessions: analytics.totalSessions,
     totalOrders: analytics.totalOrders,
+    totalProductsSold: analytics.totalProductsSold,
     totalRevenue: analytics.totalRevenue,
     apiCalls: analytics.apiCalls,
     startedAt: analytics.startedAt,
