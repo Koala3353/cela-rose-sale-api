@@ -190,7 +190,7 @@ app.post('/api/auth/google', async (req: Request, res: Response) => {
     const token = createJwtToken(user);
 
     // Track session in analytics
-    trackSession(user.id);
+    await trackSession(user.id);
 
     console.log('[Auth] User logged in:', user.email);
 
@@ -543,7 +543,7 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
 
     // Track order in analytics
     const itemsCount = (order.items || []).reduce((sum, item) => sum + item.quantity, 0);
-    trackOrder(order.total || 0, itemsCount, sessionUser.id);
+    await trackOrder(order.total || 0, itemsCount, sessionUser.id);
 
     res.json({
       success: true,
@@ -626,7 +626,7 @@ app.get('/api/products/:id', async (req: Request, res: Response) => {
 
     // Track product view
     const sessionUser = (req as any).user as SessionUser | undefined;
-    trackProductView(id, sessionUser?.id);
+    await trackProductView(id, sessionUser?.id);
 
     res.json({
       success: true,
@@ -651,18 +651,18 @@ app.get('/api/products/:id', async (req: Request, res: Response) => {
  * POST /api/analytics/pageview
  * Track a page view from the frontend
  */
-app.post('/api/analytics/pageview', optionalAuth, (req: Request, res: Response) => {
+app.post('/api/analytics/pageview', optionalAuth, async (req: Request, res: Response) => {
   try {
     const { page } = req.body;
     const sessionUser = (req as any).user as SessionUser | undefined;
     console.log('[API] Analytics pageview:', { page, user: sessionUser?.id });
 
     if (page === 'home') {
-      trackHomePageView(sessionUser?.id);
+      await trackHomePageView(sessionUser?.id);
     } else if (page === 'shop') {
-      trackShopPageView(sessionUser?.id);
+      await trackShopPageView(sessionUser?.id);
     } else if (page === 'product') {
-      trackProductView(req.body.productId, sessionUser?.id);
+      await trackProductView(req.body.productId, sessionUser?.id);
     }
 
     res.json({ success: true });

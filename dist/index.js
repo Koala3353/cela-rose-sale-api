@@ -160,7 +160,7 @@ app.post('/api/auth/google', async (req, res) => {
         // and include it in Authorization: Bearer <token> for authenticated requests.
         const token = (0, auth_1.createJwtToken)(user);
         // Track session in analytics
-        (0, analytics_1.trackSession)(user.id);
+        await (0, analytics_1.trackSession)(user.id);
         console.log('[Auth] User logged in:', user.email);
         res.json({
             success: true,
@@ -480,7 +480,7 @@ app.post('/api/orders', upload.single('paymentProof'), auth_1.requireAuth, async
         });
         // Track order in analytics
         const itemsCount = (order.items || []).reduce((sum, item) => sum + item.quantity, 0);
-        (0, analytics_1.trackOrder)(order.total || 0, itemsCount, sessionUser.id);
+        await (0, analytics_1.trackOrder)(order.total || 0, itemsCount, sessionUser.id);
         res.json({
             success: true,
             data: {
@@ -547,7 +547,7 @@ app.get('/api/products/:id', async (req, res) => {
         }
         // Track product view
         const sessionUser = req.user;
-        (0, analytics_1.trackProductView)(id, sessionUser?.id);
+        await (0, analytics_1.trackProductView)(id, sessionUser?.id);
         res.json({
             success: true,
             data: product,
@@ -569,19 +569,19 @@ app.get('/api/products/:id', async (req, res) => {
  * POST /api/analytics/pageview
  * Track a page view from the frontend
  */
-app.post('/api/analytics/pageview', auth_1.optionalAuth, (req, res) => {
+app.post('/api/analytics/pageview', auth_1.optionalAuth, async (req, res) => {
     try {
         const { page } = req.body;
         const sessionUser = req.user;
         console.log('[API] Analytics pageview:', { page, user: sessionUser?.id });
         if (page === 'home') {
-            (0, analytics_1.trackHomePageView)(sessionUser?.id);
+            await (0, analytics_1.trackHomePageView)(sessionUser?.id);
         }
         else if (page === 'shop') {
-            (0, analytics_1.trackShopPageView)(sessionUser?.id);
+            await (0, analytics_1.trackShopPageView)(sessionUser?.id);
         }
         else if (page === 'product') {
-            (0, analytics_1.trackProductView)(req.body.productId, sessionUser?.id);
+            await (0, analytics_1.trackProductView)(req.body.productId, sessionUser?.id);
         }
         res.json({ success: true });
     }

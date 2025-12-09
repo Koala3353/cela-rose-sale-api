@@ -151,13 +151,14 @@ export async function initAnalytics(): Promise<void> {
 /**
  * Save analytics by updating the same row (not appending)
  */
-export async function saveAnalytics(): Promise<void> {
-  // Debounce saves
+export async function saveAnalytics(force = false): Promise<void> {
+  // Debounce saves unless forced
   if (saveTimeout) {
     clearTimeout(saveTimeout);
+    saveTimeout = null;
   }
 
-  saveTimeout = setTimeout(async () => {
+  const doSave = async () => {
     try {
       if (!GOOGLE_SHEET_ID) {
         console.warn('[Analytics] ⚠️ Save skipped: No GOOGLE_SHEET_ID');
@@ -166,9 +167,9 @@ export async function saveAnalytics(): Promise<void> {
       if (!sessionRowNumber) {
         console.warn('[Analytics] ⚠️ Save skipped: No sessionRowNumber. Attempting re-initialization...');
         if (!isInitializing) {
-          initAnalytics().catch(e => console.error('[Analytics] Re-init failed:', e));
+          await initAnalytics();
         }
-        return;
+        if (!sessionRowNumber) return;
       }
 
       const now = new Date().toISOString();
@@ -187,70 +188,76 @@ export async function saveAnalytics(): Promise<void> {
         String(analytics.totalProductsSold)
       ];
 
-      await updateSheetRow(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME, sessionRowNumber, row);
+      await updateSheetRow(GOOGLE_SHEET_ID!, ANALYTICS_SHEET_NAME, sessionRowNumber, row);
       analytics.lastUpdatedAt = now;
       console.log(`[Analytics] Updated session row ${sessionRowNumber}`);
     } catch (error) {
       console.error('[Analytics] Failed to save analytics:', error);
     }
-  }, SAVE_DEBOUNCE_MS);
+  };
+
+  if (force) {
+    await doSave();
+  } else {
+    saveTimeout = setTimeout(doSave, SAVE_DEBOUNCE_MS);
+  }
 }
 
 /**
  * Track a home page view
  */
-export function trackHomePageView(userId?: string): void {
+export async function trackHomePageView(userId?: string): Promise<void> {
   analytics.homePageViews++;
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
-  saveAnalytics();
+  await saveAnalytics(true);
 }
 
 /**
  * Track a shop page view
  */
-export function trackShopPageView(userId?: string): void {
+export async function trackShopPageView(userId?: string): Promise<void> {
   analytics.shopPageViews++;
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
-  saveAnalytics();
+  await saveAnalytics(true);
 }
 
 /**
  * Track a product view
  */
-export function trackProductView(productId: string, userId?: string): void {
+export async function trackProductView(productId: string, userId?: string): Promise<void> {
   analytics.productViews++;
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
-  saveAnalytics();
+  await saveAnalytics(true);
 }
 
 /**
  * Track a new session
  */
-export function trackSession(userId?: string): void {
+export async function trackSession(userId?: string): Promise<void> {
   analytics.totalSessions++;
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
-  saveAnalytics();
+  await saveAnalytics(true);
 }
 
 /**
  * Track an order
  */
-export function trackOrder(orderTotal: number, itemsCount: number, userId?: string): void {
+export async function trackOrder(orderTotal: number, itemsCount: number, userId?: string): Promise<void> {
   analytics.totalOrders++;
   analytics.totalRevenue += orderTotal;
   analytics.totalProductsSold += itemsCount;
   if (userId) {
     analytics.uniqueUsers.add(userId);
   }
-  saveAnalytics();
+  await saveAnalytics(true);
 }
 
 /**

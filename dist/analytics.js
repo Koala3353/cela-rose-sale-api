@@ -112,12 +112,13 @@ async function initAnalytics() {
 /**
  * Save analytics by updating the same row (not appending)
  */
-async function saveAnalytics() {
-    // Debounce saves
+async function saveAnalytics(force = false) {
+    // Debounce saves unless forced
     if (saveTimeout) {
         clearTimeout(saveTimeout);
+        saveTimeout = null;
     }
-    saveTimeout = setTimeout(async () => {
+    const doSave = async () => {
         try {
             if (!GOOGLE_SHEET_ID) {
                 console.warn('[Analytics] ⚠️ Save skipped: No GOOGLE_SHEET_ID');
@@ -126,9 +127,10 @@ async function saveAnalytics() {
             if (!sessionRowNumber) {
                 console.warn('[Analytics] ⚠️ Save skipped: No sessionRowNumber. Attempting re-initialization...');
                 if (!isInitializing) {
-                    initAnalytics().catch(e => console.error('[Analytics] Re-init failed:', e));
+                    await initAnalytics();
                 }
-                return;
+                if (!sessionRowNumber)
+                    return;
             }
             const now = new Date().toISOString();
             const row = [
@@ -152,59 +154,65 @@ async function saveAnalytics() {
         catch (error) {
             console.error('[Analytics] Failed to save analytics:', error);
         }
-    }, SAVE_DEBOUNCE_MS);
+    };
+    if (force) {
+        await doSave();
+    }
+    else {
+        saveTimeout = setTimeout(doSave, SAVE_DEBOUNCE_MS);
+    }
 }
 /**
  * Track a home page view
  */
-function trackHomePageView(userId) {
+async function trackHomePageView(userId) {
     analytics.homePageViews++;
     if (userId) {
         analytics.uniqueUsers.add(userId);
     }
-    saveAnalytics();
+    await saveAnalytics(true);
 }
 /**
  * Track a shop page view
  */
-function trackShopPageView(userId) {
+async function trackShopPageView(userId) {
     analytics.shopPageViews++;
     if (userId) {
         analytics.uniqueUsers.add(userId);
     }
-    saveAnalytics();
+    await saveAnalytics(true);
 }
 /**
  * Track a product view
  */
-function trackProductView(productId, userId) {
+async function trackProductView(productId, userId) {
     analytics.productViews++;
     if (userId) {
         analytics.uniqueUsers.add(userId);
     }
-    saveAnalytics();
+    await saveAnalytics(true);
 }
 /**
  * Track a new session
  */
-function trackSession(userId) {
+async function trackSession(userId) {
     analytics.totalSessions++;
     if (userId) {
         analytics.uniqueUsers.add(userId);
     }
-    saveAnalytics();
+    await saveAnalytics(true);
 }
 /**
  * Track an order
  */
-function trackOrder(orderTotal, itemsCount, userId) {
+async function trackOrder(orderTotal, itemsCount, userId) {
     analytics.totalOrders++;
     analytics.totalRevenue += orderTotal;
     analytics.totalProductsSold += itemsCount;
     if (userId) {
         analytics.uniqueUsers.add(userId);
     }
-    saveAnalytics();
+    await saveAnalytics(true);
 }
 /**
  * Track an API call

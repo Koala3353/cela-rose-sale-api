@@ -36,27 +36,27 @@ export declare function initAnalytics(): Promise<void>;
 /**
  * Save analytics by updating the same row (not appending)
  */
-export declare function saveAnalytics(): Promise<void>;
+export declare function saveAnalytics(force?: boolean): Promise<void>;
 /**
  * Track a home page view
  */
-export declare function trackHomePageView(userId?: string): void;
+export declare function trackHomePageView(userId?: string): Promise<void>;
 /**
  * Track a shop page view
  */
-export declare function trackShopPageView(userId?: string): void;
+export declare function trackShopPageView(userId?: string): Promise<void>;
 /**
  * Track a product view
  */
-export declare function trackProductView(productId: string, userId?: string): void;
+export declare function trackProductView(productId: string, userId?: string): Promise<void>;
 /**
  * Track a new session
  */
-export declare function trackSession(userId?: string): void;
+export declare function trackSession(userId?: string): Promise<void>;
 /**
  * Track an order
  */
-export declare function trackOrder(orderTotal: number, itemsCount: number, userId?: string): void;
+export declare function trackOrder(orderTotal: number, itemsCount: number, userId?: string): Promise<void>;
 /**
  * Track an API call
  */
