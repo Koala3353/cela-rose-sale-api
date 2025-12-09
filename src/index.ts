@@ -754,7 +754,7 @@ app.listen(PORT, async () => {
   `);
 
   // Load analytics data
-  initAnalytics();
+  await initAnalytics();
   console.log('[Server] 📊 Analytics loaded');
 
   // Validate configuration
