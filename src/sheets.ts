@@ -283,8 +283,12 @@ export async function appendToSheet(sheetId: string, sheetName: string, rows: st
 
 /**
  * Upload a file to Google Drive and return a shareable link
- * The file will be uploaded to a folder (if GOOGLE_DRIVE_FOLDER_ID is set)
- * and made publicly viewable
+ * 
+ * IMPORTANT: Service Accounts have no storage quota in regular Drive.
+ * They can only upload to Shared Drives (Team Drives).
+ * 
+ * Set GOOGLE_DRIVE_FOLDER_ID to a folder ID inside a Shared Drive
+ * that the service account has access to.
  */
 export async function uploadFileToDrive(
   fileBuffer: Buffer,
@@ -298,6 +302,12 @@ export async function uploadFileToDrive(
       throw new Error('Service account required for uploading to Drive');
     }
 
+    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+
+    if (!folderId) {
+      throw new Error('GOOGLE_DRIVE_FOLDER_ID environment variable is required. Service accounts must upload to a Shared Drive folder.');
+    }
+
     const client = await auth.getClient();
     const driveClient = google.drive({ version: 'v3', auth: client as any });
 
@@ -306,18 +316,13 @@ export async function uploadFileToDrive(
     stream.push(fileBuffer);
     stream.push(null);
 
-    // File metadata
+    // File metadata - must specify parent folder in Shared Drive
     const fileMetadata: any = {
       name: fileName,
+      parents: [folderId],
     };
 
-    // Optionally put in a specific folder
-    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-    if (folderId) {
-      fileMetadata.parents = [folderId];
-    }
-
-    // Upload the file
+    // Upload the file with Shared Drive support
     const response = await driveClient.files.create({
       requestBody: fileMetadata,
       media: {
@@ -325,6 +330,7 @@ export async function uploadFileToDrive(
         body: stream,
       },
       fields: 'id, webViewLink, webContentLink',
+      supportsAllDrives: true, // Required for Shared Drives
     });
 
     const fileId = response.data.id;
@@ -334,18 +340,26 @@ export async function uploadFileToDrive(
     }
 
     // Make the file publicly viewable
-    await driveClient.permissions.create({
-      fileId: fileId,
-      requestBody: {
-        role: 'reader',
-        type: 'anyone',
-      },
-    });
+    // Note: For Shared Drives, the folder's sharing settings may already allow this
+    try {
+      await driveClient.permissions.create({
+        fileId: fileId,
+        requestBody: {
+          role: 'reader',
+          type: 'anyone',
+        },
+        supportsAllDrives: true, // Required for Shared Drives
+      });
+    } catch (permError: any) {
+      // Permission creation might fail if the Shared Drive already handles sharing
+      // This is okay - the file will still be accessible via the drive's settings
+      console.warn('[Drive] Could not create public permission (may be handled by Shared Drive settings):', permError.message);
+    }
 
     // Get the shareable link
     const fileLink = `https://drive.google.com/file/d/${fileId}/view`;
 
-    console.log('[Drive] Uploaded file:', fileName, '-> ', fileLink);
+    console.log('[Drive] Uploaded file:', fileName, '->', fileLink);
 
     return fileLink;
   } catch (error: any) {

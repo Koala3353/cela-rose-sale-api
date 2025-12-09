@@ -9,7 +9,8 @@ import multer from 'multer';
 dotenv.config();
 
 import { cache } from './cache';
-import { fetchSheetData, parseProductsData, extractFilterOptions, appendToSheet, uploadFileToDrive, updateStockCounts, fetchUserOrdersFromSheet, SheetOrder } from './sheets';
+import { fetchSheetData, parseProductsData, extractFilterOptions, appendToSheet, updateStockCounts, fetchUserOrdersFromSheet, SheetOrder } from './sheets';
+import { uploadToImgur } from './imgur';
 import { Product, ApiResponse, FilterOptions, OrderPayload } from './types';
 import { verifyGoogleToken, requireAuth, optionalAuth, SessionUser, createJwtToken } from './auth';
 import {
@@ -439,19 +440,18 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
     const orderId = 'ORD-' + Math.random().toString(36).substring(2, 11).toUpperCase();
     const timestamp = new Date().toISOString();
 
-    // Upload payment proof to Google Drive if provided
+    // Upload payment proof to Imgur if provided
     let paymentProofLink = '';
     if (uploadedFile) {
       try {
         const fileName = `${orderId}_payment_${Date.now()}_${uploadedFile.originalname}`;
-        paymentProofLink = await uploadFileToDrive(
+        paymentProofLink = await uploadToImgur(
           uploadedFile.buffer,
-          fileName,
-          uploadedFile.mimetype
+          fileName
         );
       } catch (uploadError: any) {
         console.error('[API] Failed to upload payment proof:', uploadError.message);
-        // Continue without the link
+        // Continue without the link - order is still valid
       }
     }
 
