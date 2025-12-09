@@ -291,8 +291,10 @@ export async function updateSheetRow(sheetId: string, sheetName: string, rowNumb
     if (!auth) throw new Error('No Google Sheets auth available');
     const sheetsClient = google.sheets({ version: 'v4', auth });
 
-    // Update the specific row (A{rowNumber}:K{rowNumber} for analytics columns)
-    const range = `${sheetName}!A${rowNumber}:K${rowNumber}`;
+    // Update the specific row. Dynamically calculate end column to support more fields.
+    // Assuming less than 26 columns for now. If more, we need columnToLetter helper.
+    const endColChar = String.fromCharCode(65 + (values.length - 1)); // 0->A, 11->L
+    const range = `${sheetName}!A${rowNumber}:${endColChar}${rowNumber}`;
 
     await sheetsClient.spreadsheets.values.update({
       spreadsheetId: sheetId,
