@@ -10,7 +10,7 @@ dotenv.config();
 
 import { cache } from './cache';
 import { fetchSheetData, parseProductsData, extractFilterOptions, appendToSheet, updateStockCounts, fetchUserOrdersFromSheet, SheetOrder } from './sheets';
-import { uploadToImgur } from './imgur';
+import { uploadToImgBB } from './imgbb';
 import { Product, ApiResponse, FilterOptions, OrderPayload } from './types';
 import { verifyGoogleToken, requireAuth, optionalAuth, SessionUser, createJwtToken } from './auth';
 import {
@@ -445,7 +445,7 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
     if (uploadedFile) {
       try {
         const fileName = `${orderId}_payment_${Date.now()}_${uploadedFile.originalname}`;
-        paymentProofLink = await uploadToImgur(
+        paymentProofLink = await uploadToImgBB(
           uploadedFile.buffer,
           fileName
         );
