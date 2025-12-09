@@ -60,6 +60,7 @@ const ANALYTICS_SHEET_NAME = 'Analytics';
 
 // Track the row number for this session (set when we first save)
 let sessionRowNumber: number | null = null;
+let isInitializing = false;
 
 // Debounce saves to avoid rate limiting
 let saveTimeout: NodeJS.Timeout | null = null;
@@ -69,6 +70,8 @@ const SAVE_DEBOUNCE_MS = 5000; // Save at most every 5 seconds
  * Initialize analytics - finds existing row or creates a new one for this server session
  */
 export async function initAnalytics(): Promise<void> {
+  if (isInitializing || sessionRowNumber) return;
+  isInitializing = true;
   console.log('[Analytics] Initializing analytics...');
   if (!GOOGLE_SHEET_ID) {
     console.warn('[Analytics] ⚠️ GOOGLE_SHEET_ID is missing. Analytics will not be saved to Google Sheets.');
@@ -134,6 +137,8 @@ export async function initAnalytics(): Promise<void> {
     }
   } catch (error: any) {
     console.error('[Analytics] ❌ Failed to initialize analytics (Check if "Analytics" tab exists):', error.message);
+  } finally {
+    isInitializing = false;
   }
 }
 
@@ -153,7 +158,10 @@ export async function saveAnalytics(): Promise<void> {
         return;
       }
       if (!sessionRowNumber) {
-        console.warn('[Analytics] ⚠️ Save skipped: No sessionRowNumber (Init failed or pending)');
+        console.warn('[Analytics] ⚠️ Save skipped: No sessionRowNumber. Attempting re-initialization...');
+        if (!isInitializing) {
+          initAnalytics().catch(e => console.error('[Analytics] Re-init failed:', e));
+        }
         return;
       }
 

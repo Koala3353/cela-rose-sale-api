@@ -698,6 +698,18 @@ app.post('/api/analytics/reset', (req: Request, res: Response) => {
   });
 });
 
+// Debug analytics route
+app.get('/api/debug/analytics', async (req: Request, res: Response) => {
+  try {
+    if (!GOOGLE_SHEET_ID) throw new Error('No Sheet ID');
+    const testRow = [new Date().toISOString(), 'TEST_WRITE', 'Check', 'If', 'Working'];
+    await appendToSheet(GOOGLE_SHEET_ID, 'Analytics', [testRow]);
+    res.json({ success: true, message: 'Wrote test row to Analytics sheet' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message, stack: error.stack });
+  }
+});
+
 // 404 handler - return list of available endpoints
 app.use((req: Request, res: Response) => {
   res.status(404).json({
@@ -731,6 +743,8 @@ app.use((req: Request, res: Response) => {
     }
   });
 });
+
+
 
 // Error handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
