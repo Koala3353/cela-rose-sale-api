@@ -3,6 +3,7 @@ import cors from 'cors';
 // Session/cookie-based imports removed — using JWTs instead
 import dotenv from 'dotenv';
 import multer from 'multer';
+import path from 'path';
 
 // Load environment variables as early as possible so modules that import
 // environment-dependent values (like `cache` or `sheets`) receive them.
@@ -444,7 +445,8 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
     let paymentProofLink = '';
     if (uploadedFile) {
       try {
-        const fileName = `${orderId}_payment_${Date.now()}_${uploadedFile.originalname}`;
+        const ext = path.extname(uploadedFile.originalname) || '.png';
+        const fileName = `${orderId}_proof_${Date.now()}${ext}`;
         paymentProofLink = await uploadToImgBB(
           uploadedFile.buffer,
           fileName
@@ -494,7 +496,7 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
       'Pending',                        // Z - Status
       '',                               // AA - Reserved for Google Apps Script
       '',                               // AB - Reserved for Google Apps Script
-      paymentProofLink                  // AC - Payment Proof Link
+      paymentProofLink ? `=HYPERLINK("${paymentProofLink}", "View Proof")` : ''                  // AC - Payment Proof Link
     ];
 
     // Append to Google Sheet

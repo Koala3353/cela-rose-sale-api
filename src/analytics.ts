@@ -148,7 +148,14 @@ export async function saveAnalytics(): Promise<void> {
 
   saveTimeout = setTimeout(async () => {
     try {
-      if (!GOOGLE_SHEET_ID || !sessionRowNumber) return;
+      if (!GOOGLE_SHEET_ID) {
+        console.warn('[Analytics] ⚠️ Save skipped: No GOOGLE_SHEET_ID');
+        return;
+      }
+      if (!sessionRowNumber) {
+        console.warn('[Analytics] ⚠️ Save skipped: No sessionRowNumber (Init failed or pending)');
+        return;
+      }
 
       const now = new Date().toISOString();
       const row: string[] = [
