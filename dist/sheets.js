@@ -8,6 +8,7 @@ exports.appendToSheet = appendToSheet;
 exports.updateSheetRow = updateSheetRow;
 exports.uploadFileToDrive = uploadFileToDrive;
 exports.fetchUserOrdersFromSheet = fetchUserOrdersFromSheet;
+exports.findOrderById = findOrderById;
 exports.updateStockCounts = updateStockCounts;
 const googleapis_1 = require("googleapis");
 const stream_1 = require("stream");
@@ -167,7 +168,7 @@ function parseProductsData(values) {
             description: ['description', 'desc', 'details'],
             tags: ['tags', 'labels', 'keywords'],
             available: ['available', 'active', 'enabled', 'visible', 'show'],
-            bundleItems: ['bundle_items', 'bundleitems', 'contents', 'bundled_products', 'items_inside']
+            bundleItems: ['bundle_items', 'bundleitems', 'contents', 'bundled_products', 'items_inside', 'options', 'variations', 'customization']
         };
         for (const variant of variations[name] || [name]) {
             const idx = headers.indexOf(variant);
@@ -467,6 +468,105 @@ async function fetchUserOrdersFromSheet(sheetId, sheetName, userEmail, apiKey) {
     catch (error) {
         console.error('[Sheets] Error fetching user orders:', error);
         throw new Error(`Failed to fetch user orders: ${error.message}`);
+    }
+}
+/**
+ * Finds a single order by its Order ID (for guest tracking)
+ */
+async function findOrderById(sheetId, sheetName, orderId, apiKey) {
+    try {
+        const rawData = await fetchSheetData(sheetId, sheetName);
+        const headers = rawData[0].map(h => h.toLowerCase().trim());
+        // Helper to find column index (case-insensitive, multiple variations)
+        const getIndex = (name) => {
+            const searchTerms = Array.isArray(name) ? name : [name];
+            for (const term of searchTerms) {
+                const idx = headers.findIndex(h => h === term.toLowerCase());
+                if (idx !== -1)
+                    return idx;
+            }
+            return -1;
+        };
+        const indices = {
+            orderId: getIndex('orderid'),
+            timestamp: getIndex(['timestamp', 'date']),
+            email: getIndex(['email', 'emailaddress']),
+            purchaserName: getIndex(['purchasername', 'name']),
+            studentId: getIndex(['studentid', 'idnumber']),
+            contactNumber: getIndex(['contactnumber', 'mobile']),
+            facebookLink: getIndex(['facebooklink', 'fb']),
+            recipientName: getIndex(['recipientname', 'recipient']),
+            recipientContact: getIndex(['recipientcontact', 'recipientnumber']),
+            recipientFbLink: getIndex(['recipientfblink', 'recipientfb']),
+            anonymous: getIndex(['anonymous', 'hideidentity']),
+            deliveryDate1: getIndex(['deliverydate1', 'date1']),
+            time1: getIndex(['time1', 'deliverytime1']),
+            venue1: getIndex(['venue1', 'location1']),
+            room1: getIndex(['room1', 'deliveryroom1']),
+            deliveryDate2: getIndex(['deliverydate2', 'date2']),
+            time2: getIndex(['time2', 'deliverytime2']),
+            venue2: getIndex(['venue2', 'location2']),
+            room2: getIndex(['room2', 'deliveryroom2']),
+            cartItems: getIndex(['cartitems', 'items', 'cart']),
+            bundleDetails: getIndex(['bundledetails', 'bundles']),
+            advocacyDonation: getIndex(['advocacydonation', 'donation']),
+            msgBeneficiary: getIndex(['msgbeneficiary', 'message']),
+            msgRecipient: getIndex(['msgrecipient', 'letter']),
+            notes: getIndex(['notes', 'requests']),
+            total: getIndex(['total', 'amount']),
+            payment: getIndex(['payment', 'paid']),
+            status: getIndex(['status', 'orderstatus']),
+            paymentConfirmed: 25, // Column Z (index 25)
+            assignedDoveEmail: getIndex(['assigneddoveemail', 'assigneddove', 'dove'])
+        };
+        const targetOrderId = orderId.trim();
+        // Iterate efficiently looking for the ID
+        for (let i = 1; i < rawData.length; i++) {
+            const row = rawData[i];
+            if (!row || row.length === 0)
+                continue;
+            const currentOrderId = (row[indices.orderId] || '').trim();
+            if (currentOrderId === targetOrderId) {
+                const getValue = (idx) => (idx >= 0 && row[idx]) ? row[idx].trim() : '';
+                return {
+                    orderId: getValue(indices.orderId),
+                    timestamp: getValue(indices.timestamp),
+                    email: getValue(indices.email),
+                    purchaserName: getValue(indices.purchaserName),
+                    studentId: getValue(indices.studentId),
+                    contactNumber: getValue(indices.contactNumber),
+                    facebookLink: getValue(indices.facebookLink),
+                    recipientName: getValue(indices.recipientName),
+                    recipientContact: getValue(indices.recipientContact),
+                    recipientFbLink: getValue(indices.recipientFbLink),
+                    anonymous: getValue(indices.anonymous).toLowerCase() === 'yes',
+                    deliveryDate1: getValue(indices.deliveryDate1),
+                    time1: getValue(indices.time1),
+                    venue1: getValue(indices.venue1),
+                    room1: getValue(indices.room1),
+                    deliveryDate2: getValue(indices.deliveryDate2),
+                    time2: getValue(indices.time2),
+                    venue2: getValue(indices.venue2),
+                    room2: getValue(indices.room2),
+                    cartItems: getValue(indices.cartItems),
+                    bundleDetails: getValue(indices.bundleDetails),
+                    advocacyDonation: parseFloat(getValue(indices.advocacyDonation)) || 0,
+                    msgBeneficiary: getValue(indices.msgBeneficiary),
+                    msgRecipient: getValue(indices.msgRecipient),
+                    notes: getValue(indices.notes),
+                    total: parseFloat(getValue(indices.total)) || 0,
+                    payment: parseFloat(getValue(indices.payment)) || 0,
+                    status: getValue(indices.status) || 'Pending',
+                    paymentConfirmed: (getValue(25) || 'FALSE').toUpperCase() === 'TRUE',
+                    assignedDoveEmail: getValue(indices.assignedDoveEmail)
+                };
+            }
+        }
+        return null; // Not found
+    }
+    catch (error) {
+        console.error('[Sheets] Error finding order by ID:', error);
+        throw new Error(`Failed to find order: ${error.message}`);
     }
 }
 /**

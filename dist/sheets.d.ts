@@ -76,6 +76,10 @@ export interface SheetOrder {
  */
 export declare function fetchUserOrdersFromSheet(sheetId: string, sheetName: string, userEmail: string, apiKey?: string): Promise<SheetOrder[]>;
 /**
+ * Finds a single order by its Order ID (for guest tracking)
+ */
+export declare function findOrderById(sheetId: string, sheetName: string, orderId: string, apiKey: string): Promise<SheetOrder | null>;
+/**
  * Updates stock counts for multiple products in a single batch request.
  */
 export declare function updateStockCounts(sheetId: string, sheetName: string, stockUpdates: Map<string, number>): Promise<boolean>;
