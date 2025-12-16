@@ -357,7 +357,7 @@ app.post('/api/refresh', async (req, res) => {
  * Submit a new order (requires authentication)
  * Accepts multipart/form-data with orderData (JSON) and optional paymentProof (image)
  */
-app.post('/api/orders', upload.single('paymentProof'), async (req, res) => {
+app.post('/api/orders', auth_1.optionalAuth, upload.single('paymentProof'), async (req, res) => {
     try {
         // Parse order data from form field
         let order;
@@ -370,13 +370,13 @@ app.post('/api/orders', upload.single('paymentProof'), async (req, res) => {
         }
         const sessionUser = req.user;
         const uploadedFile = req.file;
-        console.log('[API] Processing order for user:', sessionUser.email);
+        console.log('[API] Processing order for user:', sessionUser?.email || 'Guest');
         if (uploadedFile) {
             console.log('[API] Payment proof received:', uploadedFile.originalname, uploadedFile.size, 'bytes');
         }
         // Use session user email if not provided
-        const email = order.email || sessionUser.email;
-        const purchaserName = order.purchaserName || sessionUser.name;
+        const email = order.email || sessionUser?.email;
+        const purchaserName = order.purchaserName || sessionUser?.name;
         // Validate required fields
         if (!email || !purchaserName) {
             return res.status(400).json({
@@ -473,7 +473,7 @@ app.post('/api/orders', upload.single('paymentProof'), async (req, res) => {
         }
         console.log('[API] New order received:', {
             orderId,
-            userId: sessionUser.id,
+            userId: sessionUser?.id || 'guest',
             email,
             name: purchaserName,
             total: order.total,
@@ -481,7 +481,7 @@ app.post('/api/orders', upload.single('paymentProof'), async (req, res) => {
         });
         // Track order in analytics
         const itemsCount = (order.items || []).reduce((sum, item) => sum + item.quantity, 0);
-        await (0, analytics_1.trackOrder)(order.total || 0, itemsCount, sessionUser.id);
+        await (0, analytics_1.trackOrder)(order.total || 0, itemsCount, sessionUser?.id);
         res.json({
             success: true,
             data: {
