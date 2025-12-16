@@ -500,7 +500,220 @@ app.post('/api/orders', auth_1.optionalAuth, upload.single('paymentProof'), asyn
         });
     }
 });
-// ... (rest of file)
+/**
+ * GET /api/orders/search
+ * Search for an order by ID (public access for guests)
+ */
+app.get('/api/orders/search', async (req, res) => {
+    try {
+        const { orderId } = req.query;
+        if (!orderId || typeof orderId !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Order ID is required'
+            });
+        }
+        console.log('[API] Searching for order:', orderId);
+        // Import this function from sheets.ts (it will be available after the previous edit)
+        const order = await (0, sheets_1.findOrderById)(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, orderId, GOOGLE_API_KEY);
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                error: 'Order not found'
+            });
+        }
+        const response = {
+            success: true,
+            data: order
+        };
+        // Security Check: If it's a student order (has ID and not '000000'), require auth
+        // Ideally user should use /api/orders, but if they search by ID, we block it here.
+        if (order.studentId && order.studentId !== '000000') {
+            return res.status(403).json({
+                success: false,
+                error: 'REQUIRES_AUTH',
+                message: 'This order is linked to a student account. Please sign in to view.'
+            });
+        }
+        res.json(response);
+    }
+    catch (error) {
+        console.error('[API] Error searching order:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to search order'
+        });
+    }
+});
+/**
+ * GET /api/orders
+ * Fetch orders for the authenticated user from the Orders sheet
+ */
+app.get('/api/orders', auth_1.requireAuth, async (req, res) => {
+    try {
+        const sessionUser = req.user;
+        const userEmail = sessionUser.email;
+        console.log('[API] Fetching orders for user:', userEmail);
+        const orders = await (0, sheets_1.fetchUserOrdersFromSheet)(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, userEmail, GOOGLE_API_KEY);
+        const response = {
+            success: true,
+            data: orders
+        };
+        res.json(response);
+    }
+    catch (error) {
+        console.error('[API] Error fetching user orders:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch orders'
+        });
+    }
+});
+/**
+ * GET /api/products/:id
+ * Get a single product by ID
+ */
+app.get('/api/products/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        let products;
+        const cached = cache_1.cache.get(CACHE_KEY_PRODUCTS);
+        if (cached) {
+            products = cached.data;
+        }
+        else {
+            products = await getProductsFromSheet();
+            cache_1.cache.set(CACHE_KEY_PRODUCTS, products);
+        }
+        const product = products.find(p => p.id === id);
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                error: 'Product not found'
+            });
+        }
+        // Track product view
+        const sessionUser = req.user;
+        await (0, analytics_1.trackProductView)(id, sessionUser?.id);
+        res.json({
+            success: true,
+            data: product,
+            cached: !!cached
+        });
+    }
+    catch (error) {
+        console.error('[API] Error fetching product:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to fetch product'
+        });
+    }
+});
+// ==========================================
+// Analytics Endpoints
+// ==========================================
+/**
+ * POST /api/analytics/pageview
+ * Track a page view from the frontend
+ */
+app.post('/api/analytics/pageview', auth_1.optionalAuth, async (req, res) => {
+    try {
+        const { page } = req.body;
+        const sessionUser = req.user;
+        console.log('[API] Analytics pageview:', { page, user: sessionUser?.id });
+        if (page === 'home') {
+            await (0, analytics_1.trackHomePageView)(sessionUser?.id);
+        }
+        else if (page === 'shop') {
+            await (0, analytics_1.trackShopPageView)(sessionUser?.id);
+        }
+        else if (page === 'product') {
+            await (0, analytics_1.trackProductView)(req.body.productId, sessionUser?.id);
+        }
+        res.json({ success: true });
+    }
+    catch (err) {
+        console.error('[API] Analytics tracking failed:', err);
+        // Return 200 to avoid breaking frontend analytics flow, but report failure
+        res.status(500).json({ success: false, error: err?.message || 'Analytics failed' });
+    }
+});
+/**
+ * GET /api/analytics
+ * Get analytics snapshot (could be admin-only in production)
+ */
+app.get('/api/analytics', (req, res) => {
+    const stats = (0, analytics_1.getAnalyticsSnapshot)();
+    res.json({
+        success: true,
+        data: stats
+    });
+});
+/**
+ * POST /api/analytics/reset
+ * Reset analytics (admin-only in production)
+ */
+app.post('/api/analytics/reset', (req, res) => {
+    (0, analytics_1.resetAnalytics)();
+    res.json({
+        success: true,
+        message: 'Analytics reset successfully'
+    });
+});
+// Debug analytics route
+app.get('/api/debug/analytics', async (req, res) => {
+    try {
+        if (!GOOGLE_SHEET_ID)
+            throw new Error('No Sheet ID');
+        const testRow = [new Date().toISOString(), 'TEST_WRITE', 'Check', 'If', 'Working'];
+        await (0, sheets_1.appendToSheet)(GOOGLE_SHEET_ID, 'Analytics', [testRow]);
+        res.json({ success: true, message: 'Wrote test row to Analytics sheet' });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message, stack: error.stack });
+    }
+});
+// 404 handler - return list of available endpoints
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        error: 'Endpoint not found',
+        requestedPath: req.path,
+        availableEndpoints: {
+            health: {
+                'GET /health': 'Health check with cache statistics'
+            },
+            auth: {
+                'POST /api/auth/google': 'Login with Google ID token',
+                'POST /api/auth/logout': 'Logout and destroy session',
+                'GET /api/auth/me': 'Get current authenticated user'
+            },
+            products: {
+                'GET /api/products': 'Get all available products',
+                'GET /api/products/:id': 'Get a single product by ID',
+                'GET /api/filters': 'Get filter options (categories, tags, price range)',
+                'POST /api/refresh': 'Force refresh cache from Google Sheets'
+            },
+            orders: {
+                'POST /api/orders': 'Submit a new order (requires auth)',
+                'GET /api/orders': 'Get orders for authenticated user'
+            },
+            analytics: {
+                'GET /api/analytics': 'Get analytics snapshot',
+                'POST /api/analytics/pageview': 'Track a page view',
+                'POST /api/analytics/reset': 'Reset all analytics'
+            }
+        }
+    });
+});
+// Error handler
+app.use((err, req, res, next) => {
+    console.error('[Server] Unhandled error:', err);
+    res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+    });
+});
 // Start server
 app.listen(PORT, async () => {
     console.log(`
