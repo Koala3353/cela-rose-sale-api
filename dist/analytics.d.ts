@@ -1,20 +1,6 @@
 /**
- * In-memory analytics data store
- * Now each server session creates ONE row that gets updated (not appended)
+ * Analytics snapshot interface
  */
-export interface AnalyticsData {
-    homePageViews: number;
-    shopPageViews: number;
-    productViews: number;
-    uniqueUsers: Set<string>;
-    totalSessions: number;
-    totalOrders: number;
-    totalRevenue: number;
-    totalProductsSold: number;
-    apiCalls: number;
-    startedAt: string;
-    lastUpdatedAt: string;
-}
 export interface AnalyticsSnapshot {
     homePageViews: number;
     shopPageViews: number;
@@ -30,11 +16,43 @@ export interface AnalyticsSnapshot {
     uptimeSeconds: number;
 }
 /**
- * Initialize analytics - finds existing row or creates a new one for this server session
+ * Analytics data structure
+ * We maintain two sets of data:
+ * 1. Accumulators: Total since the process started (for /api/analytics endpoint)
+ * 2. Deltas: Activity since the last save (for appending to Google Sheets)
+ */
+export interface AnalyticsState {
+    total: {
+        homePageViews: number;
+        shopPageViews: number;
+        productViews: number;
+        sessions: number;
+        orders: number;
+        revenue: number;
+        productsSold: number;
+        apiCalls: number;
+        uniqueUsers: Set<string>;
+    };
+    delta: {
+        homePageViews: number;
+        shopPageViews: number;
+        productViews: number;
+        sessions: number;
+        orders: number;
+        revenue: number;
+        productsSold: number;
+        apiCalls: number;
+        newUniqueUsersCount: number;
+    };
+    startedAt: string;
+    lastSavedAt: string;
+}
+/**
+ * Initialize analytics
  */
 export declare function initAnalytics(): Promise<void>;
 /**
- * Save analytics by updating the same row (not appending)
+ * Flush pending deltas to Google Sheets
  */
 export declare function saveAnalytics(force?: boolean): Promise<void>;
 /**
@@ -62,7 +80,7 @@ export declare function trackOrder(orderTotal: number, itemsCount: number, userI
  */
 export declare function trackApiCall(): void;
 /**
- * Get current analytics snapshot
+ * Get current analytics snapshot (accumulated since server start)
  */
 export declare function getAnalyticsSnapshot(): AnalyticsSnapshot;
 /**

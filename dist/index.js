@@ -438,7 +438,8 @@ app.post('/api/orders', upload.single('paymentProof'), auth_1.requireAuth, async
             'FALSE', // Z - Confirmed Payment (False by default)
             'Pending', // AA - Status
             '', // AB - Reserved for Google Apps Script
-            paymentProofLink // AC - Payment Proof Link
+            paymentProofLink, // AC - Payment Proof Link
+            order.bundleDetails || '' // AD - Bundle Details
         ];
         // Append to Google Sheet
         try {

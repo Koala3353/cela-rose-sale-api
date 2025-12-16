@@ -1,33 +1,8 @@
-import path from 'path';
-import { fetchSheetData, appendToSheet, updateSheetRow } from './sheets';
+import { appendToSheet } from './sheets';
 
 /**
- * In-memory analytics data store
- * Now each server session creates ONE row that gets updated (not appended)
+ * Analytics snapshot interface
  */
-export interface AnalyticsData {
-  // Page views
-  homePageViews: number;
-  shopPageViews: number;
-  productViews: number;
-
-  // Users
-  uniqueUsers: Set<string>;
-  totalSessions: number;
-
-  // Orders
-  totalOrders: number;
-  totalRevenue: number;
-  totalProductsSold: number;
-
-  // API usage
-  apiCalls: number;
-
-  // Timestamps
-  startedAt: string;
-  lastUpdatedAt: string;
-}
-
 export interface AnalyticsSnapshot {
   homePageViews: number;
   shopPageViews: number;
@@ -43,116 +18,90 @@ export interface AnalyticsSnapshot {
   uptimeSeconds: number;
 }
 
-// In-memory analytics for this session
-const analytics: AnalyticsData = {
-  homePageViews: 0,
-  shopPageViews: 0,
-  productViews: 0,
-  uniqueUsers: new Set<string>(),
-  totalSessions: 0,
-  totalOrders: 0,
-  totalRevenue: 0,
-  totalProductsSold: 0,
-  apiCalls: 0,
-  startedAt: new Date().toISOString().split('T')[0], // Use YYYY-MM-DD as key for daily stats
-  lastUpdatedAt: new Date().toISOString()
+/**
+ * Analytics data structure
+ * We maintain two sets of data:
+ * 1. Accumulators: Total since the process started (for /api/analytics endpoint)
+ * 2. Deltas: Activity since the last save (for appending to Google Sheets)
+ */
+export interface AnalyticsState {
+  // Lifetime accumulators (Process uptime)
+  total: {
+    homePageViews: number;
+    shopPageViews: number;
+    productViews: number;
+    sessions: number;
+    orders: number;
+    revenue: number;
+    productsSold: number;
+    apiCalls: number;
+    uniqueUsers: Set<string>; // All unique users seen in this process
+  };
+
+  // Deltas (Unsaved changes)
+  delta: {
+    homePageViews: number;
+    shopPageViews: number;
+    productViews: number;
+    sessions: number;
+    orders: number;
+    revenue: number;
+    productsSold: number;
+    apiCalls: number;
+    newUniqueUsersCount: number; // Count of NEW unique users encountered since last save
+  };
+
+  startedAt: string;
+  lastSavedAt: string;
+}
+
+const state: AnalyticsState = {
+  total: {
+    homePageViews: 0,
+    shopPageViews: 0,
+    productViews: 0,
+    sessions: 0,
+    orders: 0,
+    revenue: 0,
+    productsSold: 0,
+    apiCalls: 0,
+    uniqueUsers: new Set<string>()
+  },
+  delta: {
+    homePageViews: 0,
+    shopPageViews: 0,
+    productViews: 0,
+    sessions: 0,
+    orders: 0,
+    revenue: 0,
+    productsSold: 0,
+    apiCalls: 0,
+    newUniqueUsersCount: 0
+  },
+  startedAt: new Date().toISOString(),
+  lastSavedAt: new Date().toISOString()
 };
 
 const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const ANALYTICS_SHEET_NAME = 'Analytics';
 
-// Track the row number for this session (set when we first save)
-let sessionRowNumber: number | null = null;
-let isInitializing = false;
-
-// Debounce saves to avoid rate limiting
+// Debounce saves
 let saveTimeout: NodeJS.Timeout | null = null;
-const SAVE_DEBOUNCE_MS = 5000; // Save at most every 5 seconds
+const SAVE_DEBOUNCE_MS = 60000; // Save every 60 seconds max to avoid spamming sheets
 
 /**
- * Initialize analytics - finds existing row or creates a new one for this server session
+ * Initialize analytics
  */
 export async function initAnalytics(): Promise<void> {
-  if (isInitializing || sessionRowNumber) return;
-  isInitializing = true;
-  console.log('[Analytics] Initializing analytics...');
-  if (!GOOGLE_SHEET_ID) {
-    console.warn('[Analytics] ⚠️ GOOGLE_SHEET_ID is missing. Analytics will not be saved to Google Sheets.');
-    return;
-  }
-  console.log(`[Analytics] Using Sheet ID: ${GOOGLE_SHEET_ID.substring(0, 5)}...`);
-
-  try {
-    // Get existing rows search for matching startedAt
-    console.log('[Analytics] Fetching "Analytics" sheet data...');
-    const rows = await fetchSheetData(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME);
-    console.log(`[Analytics] Fetched ${rows.length} rows from Analytics sheet.`);
-
-    // Search for an existing row with the same startedAt timestamp (column A or J)
-    // Row index in sheet = array index + 2 (1 for header, 1 for 0-based index)
-    let foundRowIndex = -1;
-    for (let i = 0; i < rows.length; i++) {
-      const rowData = rows[i];
-      // Check if the startedAt column (index 9, column J) matches OR first column matches
-      if (rowData && (rowData[0] === analytics.startedAt || rowData[9] === analytics.startedAt)) {
-        foundRowIndex = i;
-
-        // Restore analytics state from the existing row
-        analytics.homePageViews = parseInt(rowData[1] || '0', 10);
-        analytics.shopPageViews = parseInt(rowData[2] || '0', 10);
-        analytics.productViews = parseInt(rowData[3] || '0', 10);
-        analytics.totalSessions = parseInt(rowData[5] || '0', 10);
-        analytics.totalOrders = parseInt(rowData[6] || '0', 10);
-        analytics.totalRevenue = parseFloat(rowData[7] || '0');
-        analytics.apiCalls = parseInt(rowData[8] || '0', 10);
-        if (rowData[9]) analytics.startedAt = rowData[9];
-        // Column Index 11 (L) - Total Products Sold
-        analytics.totalProductsSold = parseInt(rowData[11] || '0', 10);
-
-        console.log(`[Analytics] Found existing session row at index ${i}, restored state`);
-        break;
-      }
-    }
-
-    if (foundRowIndex >= 0) {
-      // Use the existing row (add 2 for header row and 1-based indexing)
-      sessionRowNumber = foundRowIndex + 2;
-      console.log(`[Analytics] Resuming session row ${sessionRowNumber}`);
-    } else {
-      // Create a new row for this session
-      sessionRowNumber = rows.length + 2; // +2 for header row and 1-based indexing
-      console.log(`[Analytics] Creating new session at row ${sessionRowNumber}`);
-
-      const row: string[] = [
-        analytics.startedAt, // Timestamp (startedAt)
-        '0', // homePageViews
-        '0', // shopPageViews
-        '0', // productViews
-        '0', // uniqueUsers
-        '0', // totalSessions
-        '0', // totalOrders
-        '0', // totalRevenue
-        '0', // apiCalls
-        analytics.startedAt, // startedAt
-        analytics.startedAt,  // lastUpdatedAt
-        '0'  // totalProductsSold
-      ];
-
-      await appendToSheet(GOOGLE_SHEET_ID, ANALYTICS_SHEET_NAME, [row]);
-      console.log(`[Analytics] ✅ Created new session row ${sessionRowNumber} in Google Sheets`);
-    }
-  } catch (error: any) {
-    console.error('[Analytics] ❌ Failed to initialize analytics (Check if "Analytics" tab exists):', error.message);
-  } finally {
-    isInitializing = false;
-  }
+  // No longer need to fetch previous state from sheets
+  // We just start logging from now.
+  console.log('[Analytics] App initialized. Ready to log events.');
 }
 
 /**
- * Save analytics by updating the same row (not appending)
+ * Flush pending deltas to Google Sheets
  */
 export async function saveAnalytics(force = false): Promise<void> {
-  // Debounce saves unless forced
   if (saveTimeout) {
     clearTimeout(saveTimeout);
     saveTimeout = null;
@@ -160,39 +109,60 @@ export async function saveAnalytics(force = false): Promise<void> {
 
   const doSave = async () => {
     try {
+      // Check if there is anything to save
+      const hasData = Object.values(state.delta).some(val => val > 0);
+      if (!hasData) return;
+
       if (!GOOGLE_SHEET_ID) {
         console.warn('[Analytics] ⚠️ Save skipped: No GOOGLE_SHEET_ID');
         return;
       }
-      if (!sessionRowNumber) {
-        console.warn('[Analytics] ⚠️ Save skipped: No sessionRowNumber. Attempting re-initialization...');
-        if (!isInitializing) {
-          await initAnalytics();
-        }
-        if (!sessionRowNumber) return;
-      }
 
+      // Prepare row data
+      // Columns: Timestamp, HomeViews, ShopViews, ProductViews, NewUsers, Sessions, Orders, Revenue, ApiCalls, Source, Type
+      // Note: We use the timestamp as the "ID" of this batch
       const now = new Date().toISOString();
       const row: string[] = [
-        analytics.startedAt, // Timestamp (keep original startedAt)
-        String(analytics.homePageViews),
-        String(analytics.shopPageViews),
-        String(analytics.productViews),
-        String(analytics.uniqueUsers.size),
-        String(analytics.totalSessions),
-        String(analytics.totalOrders),
-        String(analytics.totalRevenue),
-        String(analytics.apiCalls),
-        analytics.startedAt,
-        now,
-        String(analytics.totalProductsSold)
+        now, // Timestamp
+        String(state.delta.homePageViews),
+        String(state.delta.shopPageViews),
+        String(state.delta.productViews),
+        String(state.delta.newUniqueUsersCount),
+        String(state.delta.sessions),
+        String(state.delta.orders),
+        String(state.delta.revenue),
+        String(state.delta.apiCalls),
+        state.startedAt, // Tracking which server instance sent this (using start time as ID)
+        'BATCH_LOG', // Type of log
+        String(state.delta.productsSold)
       ];
 
-      await updateSheetRow(GOOGLE_SHEET_ID!, ANALYTICS_SHEET_NAME, sessionRowNumber, row);
-      analytics.lastUpdatedAt = now;
-      console.log(`[Analytics] Updated session row ${sessionRowNumber}`);
+      // Append to sheet
+      await appendToSheet(GOOGLE_SHEET_ID!, ANALYTICS_SHEET_NAME, [row]);
+
+      console.log('[Analytics] 💾 Flushed batch to sheets:', {
+        views: state.delta.homePageViews + state.delta.shopPageViews,
+        revenue: state.delta.revenue
+      });
+
+      // Reset deltas
+      state.delta = {
+        homePageViews: 0,
+        shopPageViews: 0,
+        productViews: 0,
+        sessions: 0,
+        orders: 0,
+        revenue: 0,
+        productsSold: 0,
+        apiCalls: 0,
+        newUniqueUsersCount: 0
+      };
+
+      state.lastSavedAt = now;
+
     } catch (error) {
       console.error('[Analytics] Failed to save analytics:', error);
+      // We do NOT reset deltas if save failed, so we retry next time
     }
   };
 
@@ -204,90 +174,104 @@ export async function saveAnalytics(force = false): Promise<void> {
 }
 
 /**
+ * Track user helper
+ */
+function trackUser(userId?: string) {
+  if (!userId) return;
+  // If we haven't seen this user in this process lifetime
+  if (!state.total.uniqueUsers.has(userId)) {
+    state.total.uniqueUsers.add(userId);
+    // Increment delta for "new users in this batch"
+    state.delta.newUniqueUsersCount++;
+  }
+}
+
+/**
  * Track a home page view
  */
 export async function trackHomePageView(userId?: string): Promise<void> {
-  analytics.homePageViews++;
-  if (userId) {
-    analytics.uniqueUsers.add(userId);
-  }
-  await saveAnalytics(true);
+  state.total.homePageViews++;
+  state.delta.homePageViews++;
+  trackUser(userId);
+  await saveAnalytics();
 }
 
 /**
  * Track a shop page view
  */
 export async function trackShopPageView(userId?: string): Promise<void> {
-  analytics.shopPageViews++;
-  if (userId) {
-    analytics.uniqueUsers.add(userId);
-  }
-  await saveAnalytics(true);
+  state.total.shopPageViews++;
+  state.delta.shopPageViews++;
+  trackUser(userId);
+  await saveAnalytics();
 }
 
 /**
  * Track a product view
  */
 export async function trackProductView(productId: string, userId?: string): Promise<void> {
-  analytics.productViews++;
-  if (userId) {
-    analytics.uniqueUsers.add(userId);
-  }
-  await saveAnalytics(true);
+  state.total.productViews++;
+  state.delta.productViews++;
+  trackUser(userId);
+  await saveAnalytics();
 }
 
 /**
  * Track a new session
  */
 export async function trackSession(userId?: string): Promise<void> {
-  analytics.totalSessions++;
-  if (userId) {
-    analytics.uniqueUsers.add(userId);
-  }
-  await saveAnalytics(true);
+  state.total.sessions++;
+  state.delta.sessions++;
+  trackUser(userId);
+  await saveAnalytics();
 }
 
 /**
  * Track an order
  */
 export async function trackOrder(orderTotal: number, itemsCount: number, userId?: string): Promise<void> {
-  analytics.totalOrders++;
-  analytics.totalRevenue += orderTotal;
-  analytics.totalProductsSold += itemsCount;
-  if (userId) {
-    analytics.uniqueUsers.add(userId);
-  }
-  await saveAnalytics(true);
+  state.total.orders++;
+  state.delta.orders++;
+
+  state.total.revenue += orderTotal;
+  state.delta.revenue += orderTotal;
+
+  state.total.productsSold += itemsCount;
+  state.delta.productsSold += itemsCount;
+
+  trackUser(userId);
+  await saveAnalytics(true); // Force save on important events like orders
 }
 
 /**
  * Track an API call
  */
 export function trackApiCall(): void {
-  analytics.apiCalls++;
-  // Don't save on every API call - let other tracking functions trigger saves
+  state.total.apiCalls++;
+  state.delta.apiCalls++;
+  // Don't trigger save on every API call to reduce noise
 }
 
 /**
- * Get current analytics snapshot
+ * Get current analytics snapshot (accumulated since server start)
  */
 export function getAnalyticsSnapshot(): AnalyticsSnapshot {
   const now = new Date();
-  const started = new Date(analytics.startedAt);
+  const started = new Date(state.startedAt);
   const uptimeSeconds = Math.floor((now.getTime() - started.getTime()) / 1000);
 
   return {
-    homePageViews: analytics.homePageViews,
-    shopPageViews: analytics.shopPageViews,
-    productViews: analytics.productViews,
-    uniqueUsersCount: analytics.uniqueUsers.size,
-    totalSessions: analytics.totalSessions,
-    totalOrders: analytics.totalOrders,
-    totalProductsSold: analytics.totalProductsSold,
-    totalRevenue: analytics.totalRevenue,
-    apiCalls: analytics.apiCalls,
-    startedAt: analytics.startedAt,
-    lastUpdatedAt: analytics.lastUpdatedAt,
+    homePageViews: state.total.homePageViews,
+    shopPageViews: state.total.shopPageViews,
+    productViews: state.total.productViews,
+    uniqueUsersCount: state.total.uniqueUsers.size,
+    totalSessions: state.total.sessions,
+    totalOrders: state.total.orders,
+    totalProductsSold: state.total.productsSold,
+    totalRevenue: state.total.revenue,
+    apiCalls: state.total.apiCalls,
+    startedAt: state.startedAt,
+    lastUpdatedAt: state.lastSavedAt,
     uptimeSeconds,
   };
 }
@@ -296,15 +280,27 @@ export function getAnalyticsSnapshot(): AnalyticsSnapshot {
  * Reset analytics (for testing)
  */
 export function resetAnalytics(): void {
-  analytics.homePageViews = 0;
-  analytics.shopPageViews = 0;
-  analytics.productViews = 0;
-  analytics.uniqueUsers.clear();
-  analytics.totalSessions = 0;
-  analytics.totalOrders = 0;
-  analytics.totalRevenue = 0;
-  analytics.totalProductsSold = 0;
-  analytics.apiCalls = 0;
-  analytics.startedAt = new Date().toISOString().split('T')[0];
-  analytics.lastUpdatedAt = new Date().toISOString();
+  state.total = {
+    homePageViews: 0,
+    shopPageViews: 0,
+    productViews: 0,
+    sessions: 0,
+    orders: 0,
+    revenue: 0,
+    productsSold: 0,
+    apiCalls: 0,
+    uniqueUsers: new Set<string>()
+  };
+  state.delta = {
+    homePageViews: 0,
+    shopPageViews: 0,
+    productViews: 0,
+    sessions: 0,
+    orders: 0,
+    revenue: 0,
+    productsSold: 0,
+    apiCalls: 0,
+    newUniqueUsersCount: 0
+  };
+  state.startedAt = new Date().toISOString();
 }

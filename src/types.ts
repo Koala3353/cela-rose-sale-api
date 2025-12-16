@@ -8,6 +8,7 @@ export interface Product {
   description?: string;
   tags?: string[];
   available?: boolean;
+  bundleItems?: string;
 }
 
 export interface CachedData<T> {

@@ -10,7 +10,11 @@ import path from 'path';
 dotenv.config();
 
 import { cache } from './cache';
-import { fetchSheetData, parseProductsData, extractFilterOptions, appendToSheet, updateStockCounts, fetchUserOrdersFromSheet, SheetOrder } from './sheets';
+import {
+  fetchSheetData, parseProductsData, extractFilterOptions, appendToSheet, updateStockCounts, fetchUserOrdersFromSheet,
+  findOrderById,
+  SheetOrder
+} from './sheets';
 import { uploadToCloudinary } from './cloudinary';
 import { Product, ApiResponse, FilterOptions, OrderPayload } from './types';
 import { verifyGoogleToken, requireAuth, optionalAuth, SessionUser, createJwtToken } from './auth';
@@ -406,7 +410,7 @@ app.post('/api/refresh', async (req: Request, res: Response) => {
  * Submit a new order (requires authentication)
  * Accepts multipart/form-data with orderData (JSON) and optional paymentProof (image)
  */
-app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: Request, res: Response) => {
+app.post('/api/orders', upload.single('paymentProof'), async (req: Request, res: Response) => {
   try {
     // Parse order data from form field
     let order: OrderPayload;
@@ -495,7 +499,8 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
       'FALSE',                          // Z - Confirmed Payment (False by default)
       'Pending',                        // AA - Status
       '',                               // AB - Reserved for Google Apps Script
-      paymentProofLink                  // AC - Payment Proof Link
+      paymentProofLink,                 // AC - Payment Proof Link
+      order.bundleDetails || ''         // AD - Bundle Details
     ];
 
     // Append to Google Sheet
@@ -559,6 +564,64 @@ app.post('/api/orders', upload.single('paymentProof'), requireAuth, async (req: 
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to submit order'
+    });
+  }
+});
+
+/**
+ * GET /api/orders/search
+ * Search for an order by ID (public access for guests)
+ */
+app.get('/api/orders/search', async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.query;
+
+    if (!orderId || typeof orderId !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Order ID is required'
+      });
+    }
+
+    console.log('[API] Searching for order:', orderId);
+
+    // Import this function from sheets.ts (it will be available after the previous edit)
+    const order = await findOrderById(
+      GOOGLE_SHEET_ID,
+      ORDERS_SHEET_NAME,
+      orderId,
+      GOOGLE_API_KEY
+    );
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        error: 'Order not found'
+      });
+    }
+
+    const response: ApiResponse<SheetOrder> = {
+      success: true,
+      data: order
+    };
+
+    // Security Check: If it's a student order (has ID and not '000000'), require auth
+    // Ideally user should use /api/orders, but if they search by ID, we block it here.
+    if (order.studentId && order.studentId !== '000000') {
+      return res.status(403).json({
+        success: false,
+        error: 'REQUIRES_AUTH',
+        message: 'This order is linked to a student account. Please sign in to view.'
+      });
+    }
+
+    res.json(response);
+
+  } catch (error: any) {
+    console.error('[API] Error searching order:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to search order'
     });
   }
 });

@@ -166,7 +166,8 @@ function parseProductsData(values) {
             imageurl: ['imageurl', 'image_url', 'image', 'img', 'photo'],
             description: ['description', 'desc', 'details'],
             tags: ['tags', 'labels', 'keywords'],
-            available: ['available', 'active', 'enabled', 'visible', 'show']
+            available: ['available', 'active', 'enabled', 'visible', 'show'],
+            bundleItems: ['bundle_items', 'bundleitems', 'contents', 'bundled_products', 'items_inside']
         };
         for (const variant of variations[name] || [name]) {
             const idx = headers.indexOf(variant);
@@ -184,7 +185,8 @@ function parseProductsData(values) {
         imageUrl: getIndex('imageurl'),
         description: getIndex('description'),
         tags: getIndex('tags'),
-        available: getIndex('available')
+        available: getIndex('available'),
+        bundleItems: getIndex('bundleItems')
     };
     for (let i = 1; i < values.length; i++) {
         const row = values[i];
@@ -209,7 +211,8 @@ function parseProductsData(values) {
             tags: getValue(indices.tags)
                 ? getValue(indices.tags).split(',').map(t => t.trim()).filter(Boolean)
                 : undefined,
-            available: isAvailable
+            available: isAvailable,
+            bundleItems: getValue(indices.bundleItems) || undefined
         };
         products.push(product);
     }
