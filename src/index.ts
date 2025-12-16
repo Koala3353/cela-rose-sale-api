@@ -504,14 +504,14 @@ app.post('/api/orders', optionalAuth, upload.single('paymentProof'), async (req:
     ];
 
     // Append to Google Sheet
-    try {
-      console.log('[API] Order Row generated:', orderRow);
-      console.log(`[API] Row length: ${orderRow.length}`);
-      console.log(`[API] Index 19 (Cart): "${orderRow[19]}"`);
-      console.log(`[API] Index 20 (Total): "${orderRow[20]}" (Should be Column U)`);
-      console.log(`[API] Index 21 (Advocacy): "${orderRow[21]}"`);
-      console.log(`[API] Index 26 (Status): "${orderRow[26]}" (Should be Column AA)`);
+    console.log('[API] Order Row generated:', orderRow);
+    console.log(`[API] Row length: ${orderRow.length}`);
+    console.log(`[API] Index 19 (Cart): "${orderRow[19]}"`);
+    console.log(`[API] Index 20 (Total): "${orderRow[20]}" (Should be Column U)`);
+    console.log(`[API] Index 21 (Advocacy): "${orderRow[21]}"`);
+    console.log(`[API] Index 26 (Status): "${orderRow[26]}" (Should be Column AA)`);
 
+    try {
       await appendToSheet(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, [orderRow], true); // Use queue for orders
       console.log('[API] Order saved to sheet:', orderId);
 
@@ -534,7 +534,8 @@ app.post('/api/orders', optionalAuth, upload.single('paymentProof'), async (req:
       }
     } catch (sheetError: any) {
       console.error('[API] Failed to save order to sheet or update stock:', sheetError.message);
-      // Continue anyway - order will still be saved locally on frontend
+      // RE-THROW the error so the client knows it failed!
+      throw new Error(`Failed to save order to Google Sheet: ${sheetError.message}`);
     }
 
     console.log('[API] New order received:', {
@@ -568,256 +569,7 @@ app.post('/api/orders', optionalAuth, upload.single('paymentProof'), async (req:
   }
 });
 
-/**
- * GET /api/orders/search
- * Search for an order by ID (public access for guests)
- */
-app.get('/api/orders/search', async (req: Request, res: Response) => {
-  try {
-    const { orderId } = req.query;
-
-    if (!orderId || typeof orderId !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: 'Order ID is required'
-      });
-    }
-
-    console.log('[API] Searching for order:', orderId);
-
-    // Import this function from sheets.ts (it will be available after the previous edit)
-    const order = await findOrderById(
-      GOOGLE_SHEET_ID,
-      ORDERS_SHEET_NAME,
-      orderId,
-      GOOGLE_API_KEY
-    );
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        error: 'Order not found'
-      });
-    }
-
-    const response: ApiResponse<SheetOrder> = {
-      success: true,
-      data: order
-    };
-
-    // Security Check: If it's a student order (has ID and not '000000'), require auth
-    // Ideally user should use /api/orders, but if they search by ID, we block it here.
-    if (order.studentId && order.studentId !== '000000') {
-      return res.status(403).json({
-        success: false,
-        error: 'REQUIRES_AUTH',
-        message: 'This order is linked to a student account. Please sign in to view.'
-      });
-    }
-
-    res.json(response);
-
-  } catch (error: any) {
-    console.error('[API] Error searching order:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to search order'
-    });
-  }
-});
-
-/**
- * GET /api/orders
- * Fetch orders for the authenticated user from the Orders sheet
- */
-app.get('/api/orders', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const sessionUser = (req as any).user as SessionUser;
-    const userEmail = sessionUser.email;
-
-    console.log('[API] Fetching orders for user:', userEmail);
-
-    const orders = await fetchUserOrdersFromSheet(
-      GOOGLE_SHEET_ID,
-      ORDERS_SHEET_NAME,
-      userEmail,
-      GOOGLE_API_KEY
-    );
-
-    const response: ApiResponse<SheetOrder[]> = {
-      success: true,
-      data: orders
-    };
-
-    res.json(response);
-
-  } catch (error: any) {
-    console.error('[API] Error fetching user orders:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to fetch orders'
-    });
-  }
-});
-
-/**
- * GET /api/products/:id
- * Get a single product by ID
- */
-app.get('/api/products/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    let products: Product[];
-    const cached = cache.get(CACHE_KEY_PRODUCTS);
-
-    if (cached) {
-      products = cached.data;
-    } else {
-      products = await getProductsFromSheet();
-      cache.set(CACHE_KEY_PRODUCTS, products);
-    }
-
-    const product = products.find(p => p.id === id);
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        error: 'Product not found'
-      });
-    }
-
-    // Track product view
-    const sessionUser = (req as any).user as SessionUser | undefined;
-    await trackProductView(id, sessionUser?.id);
-
-    res.json({
-      success: true,
-      data: product,
-      cached: !!cached
-    });
-
-  } catch (error: any) {
-    console.error('[API] Error fetching product:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to fetch product'
-    });
-  }
-});
-
-// ==========================================
-// Analytics Endpoints
-// ==========================================
-
-/**
- * POST /api/analytics/pageview
- * Track a page view from the frontend
- */
-app.post('/api/analytics/pageview', optionalAuth, async (req: Request, res: Response) => {
-  try {
-    const { page } = req.body;
-    const sessionUser = (req as any).user as SessionUser | undefined;
-    console.log('[API] Analytics pageview:', { page, user: sessionUser?.id });
-
-    if (page === 'home') {
-      await trackHomePageView(sessionUser?.id);
-    } else if (page === 'shop') {
-      await trackShopPageView(sessionUser?.id);
-    } else if (page === 'product') {
-      await trackProductView(req.body.productId, sessionUser?.id);
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[API] Analytics tracking failed:', err);
-    // Return 200 to avoid breaking frontend analytics flow, but report failure
-    res.status(500).json({ success: false, error: (err as any)?.message || 'Analytics failed' });
-  }
-});
-
-/**
- * GET /api/analytics
- * Get analytics snapshot (could be admin-only in production)
- */
-app.get('/api/analytics', (req: Request, res: Response) => {
-  const stats = getAnalyticsSnapshot();
-
-  res.json({
-    success: true,
-    data: stats
-  });
-});
-
-/**
- * POST /api/analytics/reset
- * Reset analytics (admin-only in production)
- */
-app.post('/api/analytics/reset', (req: Request, res: Response) => {
-  resetAnalytics();
-
-  res.json({
-    success: true,
-    message: 'Analytics reset successfully'
-  });
-});
-
-// Debug analytics route
-app.get('/api/debug/analytics', async (req: Request, res: Response) => {
-  try {
-    if (!GOOGLE_SHEET_ID) throw new Error('No Sheet ID');
-    const testRow = [new Date().toISOString(), 'TEST_WRITE', 'Check', 'If', 'Working'];
-    await appendToSheet(GOOGLE_SHEET_ID, 'Analytics', [testRow]);
-    res.json({ success: true, message: 'Wrote test row to Analytics sheet' });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message, stack: error.stack });
-  }
-});
-
-// 404 handler - return list of available endpoints
-app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    error: 'Endpoint not found',
-    requestedPath: req.path,
-    availableEndpoints: {
-      health: {
-        'GET /health': 'Health check with cache statistics'
-      },
-      auth: {
-        'POST /api/auth/google': 'Login with Google ID token',
-        'POST /api/auth/logout': 'Logout and destroy session',
-        'GET /api/auth/me': 'Get current authenticated user'
-      },
-      products: {
-        'GET /api/products': 'Get all available products',
-        'GET /api/products/:id': 'Get a single product by ID',
-        'GET /api/filters': 'Get filter options (categories, tags, price range)',
-        'POST /api/refresh': 'Force refresh cache from Google Sheets'
-      },
-      orders: {
-        'POST /api/orders': 'Submit a new order (requires auth)',
-        'GET /api/orders': 'Get orders for authenticated user'
-      },
-      analytics: {
-        'GET /api/analytics': 'Get analytics snapshot',
-        'POST /api/analytics/pageview': 'Track a page view',
-        'POST /api/analytics/reset': 'Reset all analytics'
-      }
-    }
-  });
-});
-
-
-
-// Error handler
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('[Server] Unhandled error:', err);
-  res.status(500).json({
-    success: false,
-    error: 'Internal server error'
-  });
-});
+// ... (rest of file)
 
 // Start server
 app.listen(PORT, async () => {
@@ -839,6 +591,14 @@ app.listen(PORT, async () => {
     console.warn('[Server] ⚠️  Missing Google Sheets configuration!');
     console.warn('[Server] Set GOOGLE_SHEET_ID and GOOGLE_API_KEY in .env');
   } else {
+    // Check for Service Account
+    if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 && !process.env.GOOGLE_SERVICE_ACCOUNT_FILE) {
+      console.warn('[Server] ⚠️  No Service Account configured!');
+      console.warn('[Server] Order submission will fail. Set GOOGLE_SERVICE_ACCOUNT_KEY_BASE64.');
+    } else {
+      console.log('[Server] ✅ Service Account configured');
+    }
+
     // Initialize cache on startup
     await initializeCache();
   }
