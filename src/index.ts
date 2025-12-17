@@ -58,13 +58,16 @@ const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
 const PRODUCTS_SHEET_NAME = process.env.PRODUCTS_SHEET_NAME || 'Products';
 const ORDERS_SHEET_NAME = process.env.ORDERS_SHEET_NAME || 'Orders';
 
-// Parse allowed origins - include GitHub Pages by default
+// Parse allowed origins
 const defaultOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'https://koala3353.github.io'
 ];
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || defaultOrigins;
+
+// Merge env allowed origins with defaults to ensure we never block known frontends
+const envOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [];
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
 // Middleware
 app.use(express.json());
