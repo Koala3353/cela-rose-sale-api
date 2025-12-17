@@ -494,8 +494,8 @@ export async function fetchUserOrdersFromSheet(
       msgBeneficiary: getIndex(['messageforbeneficiary', 'msgbeneficiary', 'beneficiarymessage']),
       msgRecipient: getIndex(['messageforrecipient', 'msgrecipient', 'recipientmessage']),
       notes: getIndex(['notes', 'specialrequests']),
-      total: getIndex(['total', 'amount', 'price']),
-      payment: 20, // Column U (21st column, 0-indexed = 20)
+      total: 20, // Column U (21st column, 0-indexed = 20) - Explicitly requested by user
+      payment: getIndex(['payment', 'paid', 'amountpaid']),
       status: getIndex(['status']),
       assignedDoveEmail: getIndex(['assigneddoveemail', 'assigneddove', 'dove'])
     };
@@ -616,8 +616,8 @@ export async function findOrderById(
       msgBeneficiary: getIndex(['msgbeneficiary', 'message']),
       msgRecipient: getIndex(['msgrecipient', 'letter']),
       notes: getIndex(['notes', 'requests']),
-      total: getIndex(['total', 'amount']),
-      payment: getIndex(['payment', 'paid']),
+      total: 20, // Column U (21st column, 0-indexed = 20)
+      payment: getIndex(['payment', 'paid', 'amountpaid']),
       status: getIndex(['status', 'orderstatus']),
       paymentConfirmed: 25, // Column Z (index 25)
       assignedDoveEmail: getIndex(['assigneddoveemail', 'assigneddove', 'dove'])
