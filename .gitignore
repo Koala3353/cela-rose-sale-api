@@ -9,3 +9,4 @@ GOOGLE_SERVICE_ACCOUNT_KEY_BASE64
 .vscode/
 npm-debug.log*
 *.tsbuildinfo
+server.log
