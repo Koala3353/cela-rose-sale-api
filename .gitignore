@@ -2,7 +2,12 @@ node_modules/
 dist/
 .env
 .env.*
-*.json
+.env.*
+# *.json <- ERROR: this ignores package.json!
+# Explicitly ignore sensitive keys instead:
+service-account-key.json
+google-credentials.json
+GOOGLE_SERVICE_ACCOUNT_KEY_BASE64
 GOOGLE_SERVICE_ACCOUNT_KEY_BASE64
 *.log
 .DS_Store
