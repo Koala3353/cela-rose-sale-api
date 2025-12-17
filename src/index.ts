@@ -610,9 +610,11 @@ app.get('/api/orders/search', async (req: Request, res: Response) => {
       data: order
     };
 
-    // Security Check: If it's a student order (has ID and not '000000'), require auth
-    // Ideally user should use /api/orders, but if they search by ID, we block it here.
-    if (order.studentId && order.studentId !== '000000') {
+    // Security Check: If it's a student order (has ID and not '000000' or '0'), require auth
+    const idValue = parseInt(order.studentId || '0', 10);
+    const isGuest = idValue === 0 || isNaN(idValue) || order.studentId === '000000';
+
+    if (!isGuest && order.studentId) {
       return res.status(403).json({
         success: false,
         error: 'REQUIRES_AUTH',
