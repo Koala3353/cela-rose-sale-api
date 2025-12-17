@@ -568,14 +568,17 @@ export async function findOrderById(
   apiKey: string
 ): Promise<SheetOrder | null> {
   try {
-    const rawData = await fetchSheetData(sheetId, sheetName);
-    const headers = rawData[0].map(h => h.toLowerCase().trim());
+    const rawData = await fetchSheetData(sheetId, sheetName, apiKey);
+    const headers = rawData[0].map(h => h.toLowerCase().trim().replace(/\s+/g, ''));
 
     // Helper to find column index (case-insensitive, multiple variations)
     const getIndex = (name: string | string[]): number => {
       const searchTerms = Array.isArray(name) ? name : [name];
       for (const term of searchTerms) {
-        const idx = headers.findIndex(h => h === term.toLowerCase());
+        // Headers are already normalized (lowercase, no spaces)
+        // Search terms should also be normalized if they aren't already
+        const normalizedTerm = term.toLowerCase().replace(/\s+/g, '');
+        const idx = headers.findIndex(h => h === normalizedTerm);
         if (idx !== -1) return idx;
       }
       return -1;
