@@ -53,8 +53,9 @@ if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 // Configuration
-const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID || '';
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
+// Hardcoded fallbacks to ensure Vercel deployment works without manual env setup
+const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID || '1zroV5ASCbTRLWnkl1k1eKkJG992OZqhetdH9u48QZeU';
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'AIzaSyBu7kB9rlIep8UGzyAsLksBcH_h3xOc9vs';
 const PRODUCTS_SHEET_NAME = process.env.PRODUCTS_SHEET_NAME || 'Products';
 const ORDERS_SHEET_NAME = process.env.ORDERS_SHEET_NAME || 'Orders';
 
