@@ -569,6 +569,12 @@ export async function findOrderById(
 ): Promise<SheetOrder | null> {
   try {
     const rawData = await fetchSheetData(sheetId, sheetName, apiKey);
+
+    if (!rawData || rawData.length < 1) {
+      console.log('[Sheets] No data found in orders sheet');
+      return null;
+    }
+
     const headers = rawData[0].map(h => h.toLowerCase().trim().replace(/\s+/g, ''));
 
     // Helper to find column index (case-insensitive, multiple variations)
