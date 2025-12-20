@@ -1,6 +1,6 @@
 import { google } from 'googleapis';
 import { Readable } from 'stream';
-import { Product, FilterOptions } from './types';
+import { Product, FilterOptions } from './types.js';
 
 // Order write queue
 type OrderWriteTask = {

@@ -1,4 +1,4 @@
-import { CachedData } from './types';
+import { CachedData } from './types.js';
 
 /**
  * Simple in-memory cache with TTL support
@@ -20,7 +20,7 @@ export class CacheManager<T> {
   get(key: string): CachedData<T> | null {
     const cached = this.cache.get(key);
     if (!cached) return null;
-    
+
     // Return cached data even if expired (stale-while-revalidate pattern)
     return cached;
   }
@@ -81,10 +81,10 @@ export class CacheManager<T> {
   setupAutoRefresh(key: string, refreshFn: () => Promise<T>): void {
     // Store the refresh callback
     this.refreshCallbacks.set(key, refreshFn);
-    
+
     // Clear any existing interval
     this.stopAutoRefresh(key);
-    
+
     // Set up new interval
     const interval = setInterval(async () => {
       try {

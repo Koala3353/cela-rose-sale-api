@@ -9,15 +9,15 @@ import path from 'path';
 // environment-dependent values (like `cache` or `sheets`) receive them.
 dotenv.config();
 
-import { cache } from './cache';
+import { cache } from './cache.js';
 import {
   fetchSheetData, parseProductsData, extractFilterOptions, appendToSheet, updateStockCounts, fetchUserOrdersFromSheet,
   findOrderById,
   SheetOrder
-} from './sheets';
-import { uploadToCloudinary } from './cloudinary';
-import { Product, ApiResponse, FilterOptions, OrderPayload } from './types';
-import { verifyGoogleToken, requireAuth, optionalAuth, SessionUser, createJwtToken } from './auth';
+} from './sheets.js';
+import { uploadToCloudinary } from './cloudinary.js';
+import { Product, ApiResponse, FilterOptions, OrderPayload } from './types.js';
+import { verifyGoogleToken, requireAuth, optionalAuth, SessionUser, createJwtToken } from './auth.js';
 import {
   initAnalytics,
   saveAnalytics,
@@ -29,7 +29,7 @@ import {
   trackApiCall,
   getAnalyticsSnapshot,
   resetAnalytics
-} from './analytics';
+} from './analytics.js';
 
 // Configure multer for file uploads (store in memory)
 const upload = multer({

@@ -1,4 +1,4 @@
-import { appendToSheet } from './sheets';
+import { appendToSheet } from './sheets.js';
 
 /**
  * Analytics snapshot interface
