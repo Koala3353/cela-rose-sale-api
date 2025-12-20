@@ -397,10 +397,11 @@ app.get('/api/filters', async (req: Request, res: Response) => {
 
 /**
  * POST /api/refresh
- * Force refresh the cache
+ * Force refresh the cache (both available-only and all products)
  */
 app.post('/api/refresh', async (req: Request, res: Response) => {
   try {
+    // Refresh available products
     const products = await cache.forceRefresh(CACHE_KEY_PRODUCTS);
 
     if (products) {
@@ -408,10 +409,16 @@ app.post('/api/refresh', async (req: Request, res: Response) => {
       cache.set(CACHE_KEY_FILTERS, filters);
     }
 
+    // Also refresh the products-all cache (includes unavailable products)
+    const allProducts = await getProductsFromSheet(true);
+    cache.set('products-all', allProducts);
+
     res.json({
       success: true,
-      message: 'Cache refreshed successfully',
-      timestamp: new Date().toISOString()
+      message: 'Cache refreshed successfully (including all products)',
+      timestamp: new Date().toISOString(),
+      productsCount: products?.length || 0,
+      allProductsCount: allProducts?.length || 0
     });
   } catch (error: any) {
     console.error('[API] Error refreshing cache:', error);
