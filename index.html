@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Celadon Rose</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <!-- Minimal inline critical CSS to avoid FOUC before full CSS loads -->
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+
+    html,
+    body,
+    #root {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      background: #fffafc;
+      color: #1f1720;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0
+    }
+  </style>
+  <!-- Favicon - use logo image -->
+  <link rel="icon" type="image/png" href="/celadon-rose-sale/assets/logo.png">
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/index.tsx"></script>
+</body>
+
+</html>

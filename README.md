@@ -1,157 +1,150 @@
-# 🌹 Rose Sale 2026 API Server
+# 🌹 Rose Sale 2026 - Celadon Shop
 
-A Node.js/Express API server for the Celadon Rose Sale 2026 website. Handles product data, orders, authentication, and analytics with Google Sheets as the backend database.
+A modern React e-commerce website for the Celadon Rose Sale 2026. Built with React 19, TypeScript, Vite, and Tailwind CSS.
 
 ## Features
 
-- 🔄 **Automatic Caching** - Updates every 30 seconds to avoid spamming Google Sheets API
-- 🔐 **Google OAuth** - Secure authentication with Google Sign-In
-- 📦 **Product Management** - Fetch products from Google Sheets with filtering
-- � **Order Processing** - Submit orders with automatic stock updates
-- 📎 **File Uploads** - Payment proof uploads to Google Drive
-- 📊 **Analytics** - Track page views, orders, revenue, and unique users
-- 🌐 **CORS Support** - Configurable allowed origins
-- 💾 **Stale-While-Revalidate** - Serves cached data even when refresh fails
+- 🛒 **Shopping Cart** - Add products, adjust quantities, persistent cart
+- 🔐 **Google Authentication** - Secure login with Google OAuth
+- 📱 **Responsive Design** - Beautiful on mobile and desktop
+- ✨ **Smooth Animations** - Framer Motion for delightful UX
+- 📦 **Product Catalog** - Browse roses, carnations, tulips, bouquets & bundles
+- 🎁 **Gift Messages** - Add personal messages for recipients
+- 💳 **Checkout Flow** - Multi-step checkout with validation
+- 📋 **Order History** - View past orders with details
+- 🌸 **Advocacy Donations** - Support causes with each purchase
+
+## Tech Stack
+
+- **React 19** - UI library
+- **TypeScript** - Type safety
+- **Vite** - Fast build tool
+- **Tailwind CSS v4** - Utility-first styling
+- **Framer Motion** - Animations
+- **React Router v7** - Navigation
+- **TanStack Query** - Data fetching & caching
+- **Google OAuth** - Authentication
 
 ## Setup
 
 ### 1. Install Dependencies
 
 ```bash
-cd rose-sale-api
+cd rose-sale-shop
 npm install
 ```
 
 ### 2. Configure Environment
 
-Create a `.env` file with the following:
+Create a `.env` file:
 
 ```env
-# Google Sheets Configuration
-GOOGLE_SHEET_ID=your_sheet_id_here
-GOOGLE_API_KEY=your_api_key_here
-
-# Sheet names
-PRODUCTS_SHEET_NAME=Products
-ORDERS_SHEET_NAME=Orders
-
-# Server Configuration
-PORT=3001
-
-# Cache Configuration (in milliseconds)
-CACHE_TTL=30000
-
-# CORS - comma separated origins
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
-
-# Session secret (use a long random string in production!)
-SESSION_SECRET=your-secure-random-string-here
+# API Server URL
+VITE_API_BASE_URL=http://localhost:3001/api
 
 # Google OAuth Client ID
-GOOGLE_CLIENT_ID=your_google_oauth_client_id
+VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id
 
-# Google Service Account (Base64 encoded JSON key)
-GOOGLE_SERVICE_ACCOUNT_KEY_BASE64=your_base64_encoded_service_account_key
+# Optional: Gemini API for AI features
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
-### 3. Google Cloud Setup
+### 3. Run Development Server
 
-1. **Google Sheets API** - Enable in Google Cloud Console
-2. **Google Drive API** - Enable for payment proof uploads
-3. **Service Account** - Create for writing to Sheets/Drive
-4. **OAuth Client ID** - Create for user authentication
-
-### 4. Run the Server
-
-Development (with hot reload):
 ```bash
 npm run dev
 ```
 
-Production:
+The app will be available at `http://localhost:3000`
+
+### 4. Build for Production
+
 ```bash
 npm run build
-npm start
 ```
-
-## API Endpoints
-
-### Health & Cache
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check with cache statistics |
-| POST | `/api/refresh` | Force refresh cache from Google Sheets |
-
-### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/google` | Login with Google ID token |
-| POST | `/api/auth/logout` | Logout and destroy session |
-| GET | `/api/auth/me` | Get current authenticated user |
-
-### Products
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/products` | Get all available products |
-| GET | `/api/products/:id` | Get a single product by ID |
-| GET | `/api/filters` | Get filter options (categories, tags, price range) |
-
-### Orders
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/orders` | Submit a new order (requires auth) |
-| GET | `/api/orders` | Get orders for authenticated user |
-
-### Analytics
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/analytics` | Get analytics snapshot |
-| POST | `/api/analytics/pageview` | Track a page view |
-| POST | `/api/analytics/reset` | Reset all analytics |
-
-## Analytics Data
-
-The analytics system tracks:
-- **Page Views**: Home page, shop page, product views
-- **Users**: Unique users and total sessions
-- **Orders**: Total orders and revenue
-- **API Usage**: Total API calls
-
-Data is stored in `data/analytics.json` and persists across server restarts.
 
 ## Project Structure
 
 ```
-rose-sale-api/
+rose-sale-shop/
 ├── src/
-│   ├── index.ts      # Express server & routes
-│   ├── analytics.ts  # Analytics tracking module
-│   ├── auth.ts       # Google OAuth authentication
-│   ├── cache.ts      # Cache manager with auto-refresh
-│   ├── sheets.ts     # Google Sheets/Drive integration
-│   └── types.ts      # TypeScript interfaces
-├── data/
-│   └── analytics.json # Persisted analytics data
-├── .env              # Environment variables
+│   ├── components/
+│   │   ├── CartDrawer.tsx      # Shopping cart sidebar
+│   │   ├── CheckoutForm.tsx    # Multi-step checkout
+│   │   ├── Footer.tsx          # Site footer
+│   │   ├── Login.tsx           # Google login component
+│   │   ├── Navbar.tsx          # Navigation bar
+│   │   ├── OrderHistory.tsx    # Past orders display
+│   │   └── ProductCard.tsx     # Product display card
+│   ├── context/
+│   │   ├── AuthContext.tsx     # Authentication state
+│   │   └── CartContext.tsx     # Shopping cart state
+│   ├── pages/
+│   │   ├── HomePage.tsx        # Landing page
+│   │   ├── ShopPage.tsx        # Product catalog
+│   │   └── OrdersPage.tsx      # Order history page
+│   ├── services/
+│   │   └── sheetService.ts     # API client
+│   ├── App.tsx                 # Main app component
+│   ├── constants.ts            # Configuration
+│   ├── index.tsx               # Entry point
+│   └── types.ts                # TypeScript types
+├── index.html
+├── vite.config.ts
+├── tailwind.config.js
 ├── package.json
-├── tsconfig.json
 └── README.md
 ```
 
+## Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/` | Home | Landing page with featured products |
+| `/shop` | Shop | Product catalog with search & filters |
+| `/orders` | Orders | Order history (requires login) |
+
 ## Deployment
 
-### Render.com (Recommended)
+## Frontend: GitHub Pages
 
-1. Push to GitHub
-2. Create new Web Service on Render
-3. Connect your repo
-4. Configure:
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npm start`
-5. Add environment variables from `.env`
+The frontend is automatically deployed to GitHub Pages from the `main` branch using GitHub Actions.
 
-### Environment Variables for Production
+- The build output (`dist/`) is published to the `gh-pages` branch.
+- Asset paths are automatically handled for GitHub Pages.
+- No manual deployment needed.
 
-Make sure to update:
-- `SESSION_SECRET` - Use a secure random string
-- `ALLOWED_ORIGINS` - Add your production frontend URL
+### Setup
+1. Ensure your repository is public.
+2. Enable GitHub Pages in your repo settings, set source to `gh-pages` branch.
+3. The workflow uses the built-in `GITHUB_TOKEN` for authentication.
+
+## Backend: Vercel
+
+The backend is automatically deployed to Vercel from the `main` branch using GitHub Actions.
+
+### Setup
+1. Add the following secrets to your GitHub repository:
+   - `VERCEL_TOKEN`
+   - `VERCEL_ORG_ID`
+   - `VERCEL_PROJECT_ID`
+2. The workflow will deploy the backend on every push to `main`.
+
+---
+
+## Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `VITE_API_BASE_URL` | Backend API URL | ✅ |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth Client ID | ✅ |
+| `GEMINI_API_KEY` | Gemini API for AI features | ❌ |
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run preview` | Preview production build |
+| `npm run deploy` | Deploy to GitHub Pages |

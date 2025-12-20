@@ -1,0 +1,5 @@
+{
+  "name": "Rose Sale Shop",
+  "description": "A floral shop application connected to Google Sheets with inventory management, caching strategies, and a comprehensive delivery checkout form.",
+  "requestFramePermissions": []
+}
