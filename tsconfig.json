@@ -1,8 +1,6 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "experimentalDecorators": true,
-    "useDefineForClassFields": false,
     "module": "ESNext",
     "lib": [
       "ES2022"
@@ -11,39 +9,17 @@
     "types": [
       "node"
     ],
-    "moduleResolution": "bundler",
-    "isolatedModules": true,
-    "moduleDetection": "force",
-    "allowJs": true,
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    },
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
+    "moduleResolution": "node",
     "esModuleInterop": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
   },
   "include": [
-    "src/index.ts",
-    "src/start.ts",
-    "src/auth.ts",
-    "src/cache.ts",
-    "src/sheets.ts",
-    "src/analytics.ts",
-    "src/cloudinary.ts",
-    "src/types.ts"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    "src/components",
-    "src/pages",
-    "src/context",
-    "src/services",
-    "src/utils",
-    "src/*.tsx",
-    "src/*.css"
+    "dist"
   ]
 }
