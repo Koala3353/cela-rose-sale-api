@@ -844,37 +844,45 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   });
 });
 
-// Start server
-app.listen(PORT, async () => {
-  console.log(`
+// Initialize function - runs once
+let initialized = false;
+async function initializeOnce() {
+  if (initialized) return;
+  initialized = true;
+
+  await initAnalytics();
+  console.log('[Server] 📊 Analytics loaded');
+
+  if (GOOGLE_SHEET_ID && GOOGLE_API_KEY) {
+    if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 || process.env.GOOGLE_SERVICE_ACCOUNT_FILE) {
+      console.log('[Server] ✅ Service Account configured');
+    }
+    await initializeCache();
+  }
+}
+
+// For Vercel serverless - don't call app.listen(), just export the app
+// Vercel sets VERCEL=1 or NODE_ENV=production
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV;
+
+if (!isVercel) {
+  // Start server for local development
+  app.listen(PORT, async () => {
+    console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║           🌹 Rose Sale API Server                          ║
 ╠════════════════════════════════════════════════════════════╣
 ║  Server running on: http://localhost:${PORT}                  ║
 ║  Cache TTL: ${process.env.CACHE_TTL || '30000'}ms                                    ║
 ╚════════════════════════════════════════════════════════════╝
-  `);
+    `);
 
-  // Load analytics data
-  await initAnalytics();
-  console.log('[Server] 📊 Analytics loaded');
-
-  // Validate configuration
-  if (!GOOGLE_SHEET_ID || !GOOGLE_API_KEY) {
-    console.warn('[Server] ⚠️  Missing Google Sheets configuration!');
-    console.warn('[Server] Set GOOGLE_SHEET_ID and GOOGLE_API_KEY in .env');
-  } else {
-    // Check for Service Account
-    if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 && !process.env.GOOGLE_SERVICE_ACCOUNT_FILE) {
-      console.warn('[Server] ⚠️  No Service Account configured!');
-      console.warn('[Server] Order submission will fail. Set GOOGLE_SERVICE_ACCOUNT_KEY_BASE64.');
-    } else {
-      console.log('[Server] ✅ Service Account configured');
-    }
-
-    // Initialize cache on startup
-    await initializeCache();
-  }
-});
+    await initializeOnce();
+  });
+} else {
+  // On Vercel, initialize immediately (will be called on cold start)
+  initializeOnce().catch(err => console.error('[Server] Init error:', err));
+}
 
 export default app;
+
