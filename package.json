@@ -1,6 +1,7 @@
 {
   "name": "rose-sale-api",
   "version": "1.0.0",
+  "type": "module",
   "description": "API server for Rose Sale Shop - handles Google Sheets integration with caching",
   "main": "dist/index.js",
   "scripts": {
