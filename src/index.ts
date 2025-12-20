@@ -121,11 +121,15 @@ const CACHE_KEY_FILTERS = 'filters';
 
 /**
  * Fetch products from Google Sheets
+ * @param includeUnavailable - If true, includes products marked as unavailable (for bundle config lookups)
  */
-async function getProductsFromSheet(): Promise<Product[]> {
+async function getProductsFromSheet(includeUnavailable: boolean = false): Promise<Product[]> {
   const rawData = await fetchSheetData(GOOGLE_SHEET_ID, PRODUCTS_SHEET_NAME, GOOGLE_API_KEY);
   const products = parseProductsData(rawData);
-  // Filter out unavailable products
+  // Filter out unavailable products unless explicitly requested
+  if (includeUnavailable) {
+    return products;
+  }
   return products.filter(p => p.available !== false);
 }
 
@@ -279,28 +283,37 @@ app.get('/api/debug', (req: Request, res: Response) => {
 /**
  * GET /api/products
  * Returns all available products with caching
+ * Query params:
+ *   - includeAll=true: Include unavailable products (for bundle configuration lookups)
  */
 app.get('/api/products', async (req: Request, res: Response) => {
   try {
-    const cached = cache.get(CACHE_KEY_PRODUCTS);
+    // Check if caller wants ALL products including unavailable (for bundle config)
+    const includeAll = req.query.includeAll === 'true';
+
+    // Use different cache keys for filtered vs unfiltered results
+    const cacheKey = includeAll ? 'products-all' : CACHE_KEY_PRODUCTS;
+    const cached = cache.get(cacheKey);
 
     if (cached) {
       const response: ApiResponse<Product[]> = {
         success: true,
         data: cached.data,
         cached: true,
-        cacheAge: cache.getAge(CACHE_KEY_PRODUCTS) || 0
+        cacheAge: cache.getAge(cacheKey) || 0
       };
       return res.json(response);
     }
 
     // Cache miss - fetch from sheet
-    const products = await getProductsFromSheet();
-    cache.set(CACHE_KEY_PRODUCTS, products);
+    const products = await getProductsFromSheet(includeAll);
+    cache.set(cacheKey, products);
 
-    // Also cache filters
-    const filters = extractFilterOptions(products);
-    cache.set(CACHE_KEY_FILTERS, filters);
+    // Also cache filters (always from available products only)
+    if (!includeAll) {
+      const filters = extractFilterOptions(products);
+      cache.set(CACHE_KEY_FILTERS, filters);
+    }
 
     const response: ApiResponse<Product[]> = {
       success: true,
