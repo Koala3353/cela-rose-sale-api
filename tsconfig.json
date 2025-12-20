@@ -5,9 +5,7 @@
     "useDefineForClassFields": false,
     "module": "ESNext",
     "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
+      "ES2022"
     ],
     "skipLibCheck": true,
     "types": [
@@ -17,13 +15,35 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
-    "jsx": "react-jsx",
     "paths": {
       "@/*": [
         "./*"
       ]
     },
     "allowImportingTsExtensions": true,
-    "noEmit": true
-  }
+    "noEmit": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/index.ts",
+    "src/start.ts",
+    "src/auth.ts",
+    "src/cache.ts",
+    "src/sheets.ts",
+    "src/analytics.ts",
+    "src/cloudinary.ts",
+    "src/types.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/components",
+    "src/pages",
+    "src/context",
+    "src/services",
+    "src/utils",
+    "src/*.tsx",
+    "src/*.css"
+  ]
 }
