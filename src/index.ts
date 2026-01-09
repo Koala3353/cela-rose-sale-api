@@ -30,6 +30,7 @@ import {
   getAnalyticsSnapshot,
   resetAnalytics
 } from './analytics.js';
+import { sendOrderConfirmationEmail } from './email.js';
 
 // Configure multer for file uploads (store in memory)
 const upload = multer({
@@ -575,6 +576,22 @@ app.post('/api/orders', optionalAuth, upload.single('paymentProof'), async (req:
     const itemsCount = (order.items || []).reduce((sum, item) => sum + item.quantity, 0);
     await trackOrder(order.total || 0, itemsCount, sessionUser?.id);
 
+    // Send order confirmation email (non-blocking)
+    sendOrderConfirmationEmail({
+      orderId,
+      purchaserName,
+      email,
+      total: order.total || 0,
+      cartItems: order.cartItems || '',
+      deliveryType: order.deliveryType,
+      deliveryDate1: order.deliveryDate1,
+      time1: order.time1,
+      venue1: order.venue1,
+      room1: order.room1,
+      recipientName: order.recipientName,
+      advocacyDonation: order.advocacyDonation,
+    }).catch(err => console.error('[API] Email send error:', err));
+
     res.json({
       success: true,
       data: {
@@ -631,10 +648,12 @@ app.get('/api/orders/search', async (req: Request, res: Response) => {
     };
 
     // Security Check: If it's a student order (has ID and not '000000' or '0'), require auth
-    const idValue = parseInt(order.studentId || '0', 10);
-    const isGuest = idValue === 0 || isNaN(idValue) || order.studentId === '000000';
+    const studentIdStr = (order.studentId || '').trim();
+    const idValue = parseInt(studentIdStr || '0', 10);
+    // Guest if: empty string, '0', '000000', or non-numeric value
+    const isGuest = !studentIdStr || idValue === 0 || isNaN(idValue) || studentIdStr === '000000';
 
-    if (!isGuest && order.studentId) {
+    if (!isGuest) {
       return res.status(403).json({
         success: false,
         error: 'REQUIRES_AUTH',

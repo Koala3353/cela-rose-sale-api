@@ -149,6 +149,8 @@ export interface OrderPayload {
   studentId: string;
   contactNumber: string;
   facebookLink: string;
+  deliveryType?: 'deliver' | 'pickup';
+  pickupDate?: string;
   recipientName: string;
   recipientContact: string;
   recipientFbLink: string;
