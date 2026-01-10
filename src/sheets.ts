@@ -570,8 +570,10 @@ export interface InventoryItem {
  * Fetch inventory data from the external inventory sheet
  * Sheet: 🌺 INVENTORY
  * Column B: Product names
- * Column C: Original inventory count
- * Column F: Available left inventory count
+ * Column C: Initial Inventory
+ * Column D: New Stocks In
+ * Column E: Total Stocks Out (SOLD COUNT)
+ * Column F: Available Left
  */
 export async function fetchInventoryData(
   sheetId: string,
@@ -585,24 +587,24 @@ export async function fetchInventoryData(
       return [];
     }
 
-    // Skip header row, parse data
-    // Column B (index 1) = product name
-    // Column C (index 2) = original stock
-    // Column F (index 5) = available stock
+    // Skip header row (row 1 is headers at index 0, data starts at index 1 which is row 2)
+    // But looking at the sheet, row 2 has headers, so we skip until we find actual data
     const inventory: InventoryItem[] = [];
 
     for (let i = 1; i < rawData.length; i++) {
       const row = rawData[i];
       const productName = row[1]?.trim(); // Column B
-      const originalStock = parseInt(row[2], 10) || 0; // Column C
-      const availableStock = parseInt(row[5], 10) || 0; // Column F
+      const originalStock = parseInt(row[2], 10) || 0; // Column C - Initial Inventory
+      const soldCount = parseInt(row[4], 10) || 0; // Column E - Total Stocks Out
+      const availableStock = parseInt(row[5], 10) || 0; // Column F - Available Left
 
-      if (productName) {
+      // Skip header rows or empty rows
+      if (productName && productName !== 'Product Name' && !isNaN(originalStock)) {
         inventory.push({
           productName,
           originalStock,
           availableStock,
-          soldCount: originalStock - availableStock
+          soldCount
         });
       }
     }

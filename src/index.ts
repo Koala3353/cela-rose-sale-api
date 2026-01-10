@@ -128,12 +128,46 @@ const CACHE_KEY_PRODUCTS = 'products';
 const CACHE_KEY_FILTERS = 'filters';
 
 /**
- * Fetch products from Google Sheets
+ * Fetch products from Google Sheets and merge inventory from external sheet
  * @param includeUnavailable - If true, includes products marked as unavailable (for bundle config lookups)
  */
 async function getProductsFromSheet(includeUnavailable: boolean = false): Promise<Product[]> {
   const rawData = await fetchSheetData(GOOGLE_SHEET_ID, PRODUCTS_SHEET_NAME, GOOGLE_API_KEY);
-  const products = parseProductsData(rawData);
+  let products = parseProductsData(rawData);
+
+  // Merge inventory data from external inventory sheet
+  try {
+    const inventory = await fetchInventoryData(INVENTORY_SHEET_ID, INVENTORY_SHEET_NAME);
+
+    if (inventory.length > 0) {
+      // Create a map for quick lookup by product name (case-insensitive)
+      const inventoryMap = new Map<string, { availableStock: number; soldCount: number }>();
+      for (const item of inventory) {
+        inventoryMap.set(item.productName.toLowerCase().trim(), {
+          availableStock: item.availableStock,
+          soldCount: item.soldCount
+        });
+      }
+
+      // Override stock values from inventory sheet
+      products = products.map(product => {
+        const invData = inventoryMap.get(product.name.toLowerCase().trim());
+        if (invData) {
+          return {
+            ...product,
+            stock: invData.availableStock, // Use inventory sheet's available stock
+          };
+        }
+        return product;
+      });
+
+      console.log(`[Products] Merged inventory data for ${inventoryMap.size} products`);
+    }
+  } catch (error: any) {
+    console.warn('[Products] Could not merge inventory data:', error.message);
+    // Continue with products sheet stock values as fallback
+  }
+
   // Filter out unavailable products unless explicitly requested
   if (includeUnavailable) {
     return products;
