@@ -572,9 +572,9 @@ app.post('/api/orders', optionalAuth, upload.single('paymentProof'), async (req:
       items: order.cartItems
     });
 
-    // Track order in analytics
+    // Track order in analytics (with delivery type for stats)
     const itemsCount = (order.items || []).reduce((sum, item) => sum + item.quantity, 0);
-    await trackOrder(order.total || 0, itemsCount, sessionUser?.id);
+    await trackOrder(order.total || 0, itemsCount, order.deliveryType, sessionUser?.id);
 
     // Send order confirmation email (non-blocking)
     sendOrderConfirmationEmail({

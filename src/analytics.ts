@@ -13,6 +13,12 @@ export interface AnalyticsSnapshot {
   totalProductsSold: number;
   totalRevenue: number;
   apiCalls: number;
+  // New: Delivery vs Pickup
+  deliveryOrders: number;
+  pickupOrders: number;
+  // New: Peak hours (orders by hour 0-23)
+  ordersByHour: number[];
+  peakHour: number | null;
   startedAt: string;
   lastUpdatedAt: string;
   uptimeSeconds: number;
@@ -35,7 +41,11 @@ export interface AnalyticsState {
     revenue: number;
     productsSold: number;
     apiCalls: number;
-    uniqueUsers: Set<string>; // All unique users seen in this process
+    uniqueUsers: Set<string>;
+    // New tracking
+    deliveryOrders: number;
+    pickupOrders: number;
+    ordersByHour: number[]; // Array of 24 elements (0-23)
   };
 
   // Deltas (Unsaved changes)
@@ -48,12 +58,18 @@ export interface AnalyticsState {
     revenue: number;
     productsSold: number;
     apiCalls: number;
-    newUniqueUsersCount: number; // Count of NEW unique users encountered since last save
+    newUniqueUsersCount: number;
+    // New tracking
+    deliveryOrders: number;
+    pickupOrders: number;
   };
 
   startedAt: string;
   lastSavedAt: string;
 }
+
+// Initialize 24-hour array with zeros
+const createHourArray = () => new Array(24).fill(0);
 
 const state: AnalyticsState = {
   total: {
@@ -65,7 +81,10 @@ const state: AnalyticsState = {
     revenue: 0,
     productsSold: 0,
     apiCalls: 0,
-    uniqueUsers: new Set<string>()
+    uniqueUsers: new Set<string>(),
+    deliveryOrders: 0,
+    pickupOrders: 0,
+    ordersByHour: createHourArray()
   },
   delta: {
     homePageViews: 0,
@@ -76,7 +95,9 @@ const state: AnalyticsState = {
     revenue: 0,
     productsSold: 0,
     apiCalls: 0,
-    newUniqueUsersCount: 0
+    newUniqueUsersCount: 0,
+    deliveryOrders: 0,
+    pickupOrders: 0
   },
   startedAt: new Date().toISOString(),
   lastSavedAt: new Date().toISOString()
@@ -93,8 +114,6 @@ const SAVE_DEBOUNCE_MS = 60000; // Save every 60 seconds max to avoid spamming s
  * Initialize analytics
  */
 export async function initAnalytics(): Promise<void> {
-  // No longer need to fetch previous state from sheets
-  // We just start logging from now.
   console.log('[Analytics] App initialized. Ready to log events.');
 }
 
@@ -110,7 +129,7 @@ export async function saveAnalytics(force = false): Promise<void> {
   const doSave = async () => {
     try {
       // Check if there is anything to save
-      const hasData = Object.values(state.delta).some(val => val > 0);
+      const hasData = Object.values(state.delta).some(val => typeof val === 'number' && val > 0);
       if (!hasData) return;
 
       if (!GOOGLE_SHEET_ID) {
@@ -119,8 +138,7 @@ export async function saveAnalytics(force = false): Promise<void> {
       }
 
       // Prepare row data
-      // Columns: Timestamp, HomeViews, ShopViews, ProductViews, NewUsers, Sessions, Orders, Revenue, ApiCalls, Source, Type
-      // Note: We use the timestamp as the "ID" of this batch
+      // Columns: Timestamp, HomeViews, ShopViews, ProductViews, NewUsers, Sessions, Orders, Revenue, ApiCalls, Source, Type, ProductsSold, DeliveryOrders, PickupOrders
       const now = new Date().toISOString();
       const row: string[] = [
         now, // Timestamp
@@ -132,9 +150,11 @@ export async function saveAnalytics(force = false): Promise<void> {
         String(state.delta.orders),
         String(state.delta.revenue),
         String(state.delta.apiCalls),
-        state.startedAt, // Tracking which server instance sent this (using start time as ID)
+        state.startedAt, // Tracking which server instance sent this
         'BATCH_LOG', // Type of log
-        String(state.delta.productsSold)
+        String(state.delta.productsSold),
+        String(state.delta.deliveryOrders),
+        String(state.delta.pickupOrders)
       ];
 
       // Append to sheet
@@ -142,7 +162,9 @@ export async function saveAnalytics(force = false): Promise<void> {
 
       console.log('[Analytics] 💾 Flushed batch to sheets:', {
         views: state.delta.homePageViews + state.delta.shopPageViews,
-        revenue: state.delta.revenue
+        revenue: state.delta.revenue,
+        delivery: state.delta.deliveryOrders,
+        pickup: state.delta.pickupOrders
       });
 
       // Reset deltas
@@ -155,14 +177,15 @@ export async function saveAnalytics(force = false): Promise<void> {
         revenue: 0,
         productsSold: 0,
         apiCalls: 0,
-        newUniqueUsersCount: 0
+        newUniqueUsersCount: 0,
+        deliveryOrders: 0,
+        pickupOrders: 0
       };
 
       state.lastSavedAt = now;
 
     } catch (error) {
       console.error('[Analytics] Failed to save analytics:', error);
-      // We do NOT reset deltas if save failed, so we retry next time
     }
   };
 
@@ -178,10 +201,8 @@ export async function saveAnalytics(force = false): Promise<void> {
  */
 function trackUser(userId?: string) {
   if (!userId) return;
-  // If we haven't seen this user in this process lifetime
   if (!state.total.uniqueUsers.has(userId)) {
     state.total.uniqueUsers.add(userId);
-    // Increment delta for "new users in this batch"
     state.delta.newUniqueUsersCount++;
   }
 }
@@ -227,9 +248,18 @@ export async function trackSession(userId?: string): Promise<void> {
 }
 
 /**
- * Track an order
+ * Track an order with delivery type
+ * @param orderTotal - Total order amount
+ * @param itemsCount - Number of items in order
+ * @param deliveryType - 'deliver' or 'pickup'
+ * @param userId - Optional user ID
  */
-export async function trackOrder(orderTotal: number, itemsCount: number, userId?: string): Promise<void> {
+export async function trackOrder(
+  orderTotal: number,
+  itemsCount: number,
+  deliveryType?: 'deliver' | 'pickup' | string,
+  userId?: string
+): Promise<void> {
   state.total.orders++;
   state.delta.orders++;
 
@@ -238,6 +268,19 @@ export async function trackOrder(orderTotal: number, itemsCount: number, userId?
 
   state.total.productsSold += itemsCount;
   state.delta.productsSold += itemsCount;
+
+  // Track delivery vs pickup
+  if (deliveryType === 'deliver') {
+    state.total.deliveryOrders++;
+    state.delta.deliveryOrders++;
+  } else if (deliveryType === 'pickup') {
+    state.total.pickupOrders++;
+    state.delta.pickupOrders++;
+  }
+
+  // Track order hour for peak hours analysis
+  const hour = new Date().getHours(); // 0-23 in server timezone
+  state.total.ordersByHour[hour]++;
 
   trackUser(userId);
   await saveAnalytics(true); // Force save on important events like orders
@@ -249,7 +292,6 @@ export async function trackOrder(orderTotal: number, itemsCount: number, userId?
 export function trackApiCall(): void {
   state.total.apiCalls++;
   state.delta.apiCalls++;
-  // Don't trigger save on every API call to reduce noise
 }
 
 /**
@@ -259,6 +301,16 @@ export function getAnalyticsSnapshot(): AnalyticsSnapshot {
   const now = new Date();
   const started = new Date(state.startedAt);
   const uptimeSeconds = Math.floor((now.getTime() - started.getTime()) / 1000);
+
+  // Find peak hour (hour with most orders)
+  let peakHour: number | null = null;
+  let maxOrders = 0;
+  state.total.ordersByHour.forEach((count, hour) => {
+    if (count > maxOrders) {
+      maxOrders = count;
+      peakHour = hour;
+    }
+  });
 
   return {
     homePageViews: state.total.homePageViews,
@@ -270,6 +322,11 @@ export function getAnalyticsSnapshot(): AnalyticsSnapshot {
     totalProductsSold: state.total.productsSold,
     totalRevenue: state.total.revenue,
     apiCalls: state.total.apiCalls,
+    // New metrics
+    deliveryOrders: state.total.deliveryOrders,
+    pickupOrders: state.total.pickupOrders,
+    ordersByHour: [...state.total.ordersByHour],
+    peakHour,
     startedAt: state.startedAt,
     lastUpdatedAt: state.lastSavedAt,
     uptimeSeconds,
@@ -289,7 +346,10 @@ export function resetAnalytics(): void {
     revenue: 0,
     productsSold: 0,
     apiCalls: 0,
-    uniqueUsers: new Set<string>()
+    uniqueUsers: new Set<string>(),
+    deliveryOrders: 0,
+    pickupOrders: 0,
+    ordersByHour: createHourArray()
   };
   state.delta = {
     homePageViews: 0,
@@ -300,7 +360,9 @@ export function resetAnalytics(): void {
     revenue: 0,
     productsSold: 0,
     apiCalls: 0,
-    newUniqueUsersCount: 0
+    newUniqueUsersCount: 0,
+    deliveryOrders: 0,
+    pickupOrders: 0
   };
   state.startedAt = new Date().toISOString();
 }

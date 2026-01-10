@@ -1,6 +1,16 @@
+import nodemailer from 'nodemailer';
+
 /**
  * Email service for sending order confirmation emails
- * Uses Resend API (https://resend.com) - 3000 free emails/month
+ * Uses Gmail SMTP - requires GMAIL_USER and GMAIL_APP_PASSWORD env vars
+ * 
+ * Setup steps:
+ * 1. Enable 2FA on your Gmail account
+ * 2. Go to https://myaccount.google.com/apppasswords
+ * 3. Create an App Password for "Mail"
+ * 4. Add to .env:
+ *    GMAIL_USER=your-email@gmail.com
+ *    GMAIL_APP_PASSWORD=your-16-char-app-password
  */
 
 interface OrderDetails {
@@ -18,6 +28,35 @@ interface OrderDetails {
   advocacyDonation?: number;
 }
 
+// Cache the transporter
+let transporter: nodemailer.Transporter | null = null;
+
+/**
+ * Get or create the Gmail SMTP transporter
+ */
+function getTransporter(): nodemailer.Transporter | null {
+  if (transporter) return transporter;
+
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD;
+
+  if (!gmailUser || !gmailAppPassword) {
+    console.log('[Email] Gmail credentials not configured (GMAIL_USER, GMAIL_APP_PASSWORD). Email notifications disabled.');
+    return null;
+  }
+
+  transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: gmailUser,
+      pass: gmailAppPassword,
+    },
+  });
+
+  console.log('[Email] Gmail SMTP configured for:', gmailUser);
+  return transporter;
+}
+
 /**
  * Format time from 24h to 12h AM/PM format
  */
@@ -33,7 +72,6 @@ function formatTime(time: string): string {
  * Build the HTML email content
  */
 function buildEmailHtml(details: OrderDetails): string {
-  // Build delivery details section
   let deliverySection = '';
   if (details.deliveryType === 'deliver' && details.deliveryDate1) {
     deliverySection = `
@@ -66,7 +104,6 @@ function buildEmailHtml(details: OrderDetails): string {
     `;
   }
 
-  // Build advocacy donation section
   let advocacySection = '';
   if (details.advocacyDonation && details.advocacyDonation > 0) {
     advocacySection = `
@@ -87,26 +124,20 @@ function buildEmailHtml(details: OrderDetails): string {
     </head>
     <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #FFF5F5;">
       <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-        <!-- Header -->
         <tr>
           <td style="background: linear-gradient(135deg, #F43F5E 0%, #EC4899 100%); padding: 32px; text-align: center;">
             <h1 style="color: #ffffff; margin: 0; font-size: 28px;">🌹 Rose Sale</h1>
             <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 14px;">Order Confirmation</p>
           </td>
         </tr>
-        
-        <!-- Content -->
         <tr>
           <td style="padding: 32px;">
             <p style="color: #333; font-size: 16px; margin: 0 0 24px 0;">
               Hi <strong>${details.purchaserName}</strong>,
             </p>
-            
             <p style="color: #666; font-size: 15px; margin: 0 0 24px 0;">
               Thank you for your order! We've received your purchase and will process it shortly.
             </p>
-            
-            <!-- Order ID Box -->
             <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #FFF1F2; border-radius: 12px; margin-bottom: 24px;">
               <tr>
                 <td style="padding: 20px; text-align: center;">
@@ -115,8 +146,6 @@ function buildEmailHtml(details: OrderDetails): string {
                 </td>
               </tr>
             </table>
-            
-            <!-- Order Details -->
             <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
               <tr>
                 <td style="padding: 12px 0; border-bottom: 1px solid #FDE7E9;">
@@ -131,8 +160,6 @@ function buildEmailHtml(details: OrderDetails): string {
               ${advocacySection}
               ${deliverySection}
             </table>
-            
-            <!-- Total -->
             <table width="100%" cellpadding="0" cellspacing="0" style="background: linear-gradient(135deg, #F43F5E 0%, #EC4899 100%); border-radius: 12px;">
               <tr>
                 <td style="padding: 20px; text-align: center;">
@@ -141,14 +168,11 @@ function buildEmailHtml(details: OrderDetails): string {
                 </td>
               </tr>
             </table>
-            
             <p style="color: #999; font-size: 13px; margin: 24px 0 0 0; text-align: center;">
               Save your Order ID to track your order status.
             </p>
           </td>
         </tr>
-        
-        <!-- Footer -->
         <tr>
           <td style="background-color: #FFF5F5; padding: 24px; text-align: center; border-top: 1px solid #FDE7E9;">
             <p style="color: #999; font-size: 12px; margin: 0;">
@@ -166,41 +190,27 @@ function buildEmailHtml(details: OrderDetails): string {
 }
 
 /**
- * Send order confirmation email using Resend API
+ * Send order confirmation email via Gmail SMTP
  */
 export async function sendOrderConfirmationEmail(details: OrderDetails): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY;
+  const mailer = getTransporter();
 
-  if (!apiKey) {
-    console.log('[Email] RESEND_API_KEY not configured. Email notifications disabled.');
+  if (!mailer) {
+    console.log('[Email] Skipping email - Gmail not configured');
     return false;
   }
 
-  const fromEmail = process.env.EMAIL_FROM || 'Rose Sale <onboarding@resend.dev>';
+  const fromEmail = process.env.GMAIL_USER;
 
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [details.email],
-        subject: `🌹 Order Confirmed - ${details.orderId}`,
-        html: buildEmailHtml(details),
-      }),
+    await mailer.sendMail({
+      from: `"Rose Sale" <${fromEmail}>`,
+      to: details.email,
+      subject: `🌹 Order Confirmed - ${details.orderId}`,
+      html: buildEmailHtml(details),
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('[Email] Resend API error:', error);
-      return false;
-    }
-
-    const result = await response.json() as { id: string };
-    console.log('[Email] Order confirmation sent:', result.id, 'to:', details.email);
+    console.log('[Email] Order confirmation sent to:', details.email);
     return true;
   } catch (error: any) {
     console.error('[Email] Failed to send confirmation:', error.message);
