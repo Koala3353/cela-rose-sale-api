@@ -11,9 +11,12 @@ dotenv.config();
 
 import { cache } from './cache.js';
 import {
-  fetchSheetData, parseProductsData, extractFilterOptions, appendToSheet, updateStockCounts, fetchUserOrdersFromSheet,
+  fetchSheetData, parseProductsData, extractFilterOptions, appendToSheet, fetchUserOrdersFromSheet,
   findOrderById,
-  SheetOrder
+  SheetOrder,
+  fetchInventoryData,
+  getBestSellers,
+  InventoryItem
 } from './sheets.js';
 import { uploadToCloudinary } from './cloudinary.js';
 import { Product, ApiResponse, FilterOptions, OrderPayload } from './types.js';
@@ -59,6 +62,10 @@ const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID || '1zroV5ASCbTRLWnkl1k1eKkJ
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'AIzaSyBu7kB9rlIep8UGzyAsLksBcH_h3xOc9vs';
 const PRODUCTS_SHEET_NAME = process.env.PRODUCTS_SHEET_NAME || 'Products';
 const ORDERS_SHEET_NAME = process.env.ORDERS_SHEET_NAME || 'Orders';
+
+// External inventory sheet (for stock counts and best sellers)
+const INVENTORY_SHEET_ID = process.env.INVENTORY_SHEET_ID || '13Aj3iVnnNlKm7k72d-mV3Q4SWhBMClUdvLBMEdKRVC0';
+const INVENTORY_SHEET_NAME = process.env.INVENTORY_SHEET_NAME || '🌺 INVENTORY';
 
 // Parse allowed origins
 const defaultOrigins = [
@@ -348,6 +355,73 @@ app.get('/api/products', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/bestsellers
+ * Returns best selling products based on inventory data (most sold items)
+ */
+app.get('/api/bestsellers', async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 6;
+
+    // Fetch best sellers from inventory sheet
+    const bestSellers = await getBestSellers(INVENTORY_SHEET_ID, INVENTORY_SHEET_NAME, limit);
+
+    // Match best sellers with product data to get full product info
+    const products = await getProductsFromSheet(true); // Include all products
+
+    const bestSellerProducts = bestSellers
+      .map(bs => {
+        const product = products.find(
+          p => p.name.toLowerCase().trim() === bs.productName.toLowerCase().trim()
+        );
+        if (product) {
+          return {
+            ...product,
+            soldCount: bs.soldCount,
+            originalStock: bs.originalStock,
+            availableStock: bs.availableStock
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
+    res.json({
+      success: true,
+      data: bestSellerProducts
+    });
+
+  } catch (error: any) {
+    console.error('[API] Error fetching best sellers:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch best sellers'
+    });
+  }
+});
+
+/**
+ * GET /api/inventory
+ * Returns current inventory data from the external inventory sheet
+ */
+app.get('/api/inventory', async (req: Request, res: Response) => {
+  try {
+    const inventory = await fetchInventoryData(INVENTORY_SHEET_ID, INVENTORY_SHEET_NAME);
+
+    res.json({
+      success: true,
+      data: inventory
+    });
+
+  } catch (error: any) {
+    console.error('[API] Error fetching inventory:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch inventory'
+    });
+  }
+});
+
+/**
  * GET /api/filters
  * Returns available filter options (categories, tags, price range)
  */
@@ -539,24 +613,7 @@ app.post('/api/orders', optionalAuth, upload.single('paymentProof'), async (req:
     try {
       await appendToSheet(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, [orderRow], true); // Use queue for orders
       console.log('[API] Order saved to sheet:', orderId);
-
-      // After saving the order, update stock counts
-      if (order.items && order.items.length > 0) {
-        const products = await getProductsFromSheet();
-        const stockUpdates = new Map<string, number>();
-
-        for (const item of order.items) {
-          const product = products.find(p => p.id === item.id);
-          if (product) {
-            const newStock = product.stock - item.quantity;
-            stockUpdates.set(item.id, newStock < 0 ? 0 : newStock);
-          }
-        }
-
-        if (stockUpdates.size > 0) {
-          await updateStockCounts(GOOGLE_SHEET_ID, PRODUCTS_SHEET_NAME, stockUpdates);
-        }
-      }
+      // Stock updates are now handled automatically in the inventory sheet
     } catch (sheetError: any) {
       console.error('[API] Failed to save order to sheet or update stock:', sheetError.message);
       // RE-THROW the error so the client knows it failed!

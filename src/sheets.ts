@@ -557,71 +557,78 @@ export async function findOrderById(
 }
 
 /**
- * Updates stock counts for multiple products in a single batch request.
+ * Inventory item from the external inventory sheet
  */
-export async function updateStockCounts(
+export interface InventoryItem {
+  productName: string;
+  originalStock: number;
+  availableStock: number;
+  soldCount: number;
+}
+
+/**
+ * Fetch inventory data from the external inventory sheet
+ * Sheet: 🌺 INVENTORY
+ * Column B: Product names
+ * Column C: Original inventory count
+ * Column F: Available left inventory count
+ */
+export async function fetchInventoryData(
   sheetId: string,
-  sheetName: string,
-  stockUpdates: Map<string, number> // Map of productId -> newStock
-): Promise<boolean> {
-  const auth = getAuth();
-  if (!auth) {
-    throw new Error('Service account required for writing to sheets.');
-  }
-
+  sheetName: string = '🌺 INVENTORY'
+): Promise<InventoryItem[]> {
   try {
-    const client = await auth.getClient();
-    const sheetsClient = google.sheets({ version: 'v4', auth: client as any });
-
-    // 1. Fetch the current sheet data to find row numbers and stock column index
     const rawData = await fetchSheetData(sheetId, sheetName);
-    const headers = rawData[0].map(h => h.toLowerCase().trim());
 
-    const idColIndex = headers.indexOf('id');
-    const stockColIndex = headers.indexOf('stock');
-
-    if (idColIndex === -1 || stockColIndex === -1) {
-      throw new Error('Could not find "id" or "stock" column in the products sheet.');
+    if (rawData.length < 2) {
+      console.log('[Sheets] Inventory sheet is empty or has no data rows');
+      return [];
     }
 
-    // 2. Prepare the data for batch update
-    const data: any[] = [];
+    // Skip header row, parse data
+    // Column B (index 1) = product name
+    // Column C (index 2) = original stock
+    // Column F (index 5) = available stock
+    const inventory: InventoryItem[] = [];
+
     for (let i = 1; i < rawData.length; i++) {
       const row = rawData[i];
-      const productId = row[idColIndex];
+      const productName = row[1]?.trim(); // Column B
+      const originalStock = parseInt(row[2], 10) || 0; // Column C
+      const availableStock = parseInt(row[5], 10) || 0; // Column F
 
-      if (stockUpdates.has(productId)) {
-        const newStock = stockUpdates.get(productId);
-        const range = `${sheetName}!${String.fromCharCode(65 + stockColIndex)}${i + 1}`;
-        data.push({
-          range: range,
-          values: [[newStock]],
+      if (productName) {
+        inventory.push({
+          productName,
+          originalStock,
+          availableStock,
+          soldCount: originalStock - availableStock
         });
       }
     }
 
-    if (data.length === 0) {
-      console.log('[Sheets] No stock updates to perform.');
-      return true;
-    }
-
-    // 3. Execute the batch update
-    const response = await sheetsClient.spreadsheets.values.batchUpdate({
-      spreadsheetId: sheetId,
-      requestBody: {
-        valueInputOption: 'USER_ENTERED',
-        data: data,
-      },
-    });
-
-    console.log(`[Sheets] Batch updated stock for ${response.data.totalUpdatedCells} product(s).`);
-    return true;
-
+    console.log(`[Sheets] Fetched inventory for ${inventory.length} products`);
+    return inventory;
   } catch (error: any) {
-    console.error('[Sheets] Error updating stock counts:', error);
-    if (error.response?.data) {
-      console.error('[Sheets] API response:', error.response.data);
-    }
-    throw new Error(`Failed to update stock counts: ${error.message}`);
+    console.error('[Sheets] Error fetching inventory:', error);
+    return [];
   }
 }
+
+/**
+ * Get best sellers sorted by most sold
+ */
+export async function getBestSellers(
+  sheetId: string,
+  sheetName: string = '🌺 INVENTORY',
+  limit: number = 6
+): Promise<InventoryItem[]> {
+  const inventory = await fetchInventoryData(sheetId, sheetName);
+
+  // Sort by sold count (descending) and take top N
+  return inventory
+    .filter(item => item.soldCount > 0)
+    .sort((a, b) => b.soldCount - a.soldCount)
+    .slice(0, limit);
+}
+
