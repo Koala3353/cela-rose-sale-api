@@ -30,7 +30,7 @@ import {
   getAnalyticsSnapshot,
   resetAnalytics
 } from './analytics.js';
-import { sendOrderConfirmationEmail } from './email.js';
+
 
 // Configure multer for file uploads (store in memory)
 const upload = multer({
@@ -576,21 +576,7 @@ app.post('/api/orders', optionalAuth, upload.single('paymentProof'), async (req:
     const itemsCount = (order.items || []).reduce((sum, item) => sum + item.quantity, 0);
     await trackOrder(order.total || 0, itemsCount, order.deliveryType, sessionUser?.id);
 
-    // Send order confirmation email (non-blocking)
-    sendOrderConfirmationEmail({
-      orderId,
-      purchaserName,
-      email,
-      total: order.total || 0,
-      cartItems: order.cartItems || '',
-      deliveryType: order.deliveryType,
-      deliveryDate1: order.deliveryDate1,
-      time1: order.time1,
-      venue1: order.venue1,
-      room1: order.room1,
-      recipientName: order.recipientName,
-      advocacyDonation: order.advocacyDonation,
-    }).catch(err => console.error('[API] Email send error:', err));
+
 
     res.json({
       success: true,
