@@ -42,7 +42,7 @@ async function processOrderQueue() {
         }
       }
     }
-    await new Promise(res => setTimeout(res, 500));
+    await new Promise(res => setTimeout(res, 10000)); // 10 sec delay to batch orders and reduce rate limit risk
   }
   orderWriteActive = false;
 }
