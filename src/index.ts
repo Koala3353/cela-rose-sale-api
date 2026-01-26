@@ -163,6 +163,68 @@ async function getProductsFromSheet(includeUnavailable: boolean = false): Promis
       });
 
       console.log(`[Products] Merged inventory data for ${inventoryMap.size} products`);
+
+      // Calculate bundle stock based on minimum non-zero stock of component items
+      // For bundles, the stock should be the lowest available stock among all components
+      // (excluding items with 0 stock, unless ALL items have 0 stock)
+      products = products.map(product => {
+        if (!product.bundleItems) return product;
+
+        // Parse bundle items string (format: "item1/item2, item3, item4/item5")
+        // Each comma-separated part is a "slot", slashes separate options within a slot
+        const slots = product.bundleItems.split(',').map(s => s.trim()).filter(Boolean);
+
+        // Collect all unique item IDs/names from the bundle
+        const allItemIds: string[] = [];
+        for (const slot of slots) {
+          const options = slot.split('/').map(o => o.trim()).filter(Boolean);
+          allItemIds.push(...options);
+        }
+
+        // Get inventory for each bundle item
+        const itemStocks: number[] = [];
+        for (const itemId of allItemIds) {
+          // Skip literal strings (quoted)
+          if ((itemId.startsWith('"') && itemId.endsWith('"')) ||
+            (itemId.startsWith("'") && itemId.endsWith("'"))) {
+            continue;
+          }
+
+          // Try to find the item in inventory (by product ID or name)
+          const itemProduct = products.find(p =>
+            p.id.toLowerCase() === itemId.toLowerCase() ||
+            p.name.toLowerCase() === itemId.toLowerCase()
+          );
+
+          if (itemProduct) {
+            itemStocks.push(itemProduct.stock);
+          } else {
+            // Try inventory map directly
+            const invItem = inventoryMap.get(itemId.toLowerCase());
+            if (invItem) {
+              itemStocks.push(invItem.availableStock);
+            }
+          }
+        }
+
+        if (itemStocks.length === 0) {
+          // No trackable items in bundle, keep original stock
+          return product;
+        }
+
+        // Get non-zero stocks, sorted ascending
+        const nonZeroStocks = itemStocks.filter(s => s > 0).sort((a, b) => a - b);
+
+        // Bundle stock = minimum non-zero stock, or 0 if all items are out of stock
+        const bundleStock = nonZeroStocks.length > 0 ? nonZeroStocks[0] : 0;
+
+        console.log(`[Bundle Stock] ${product.name}: component stocks = [${itemStocks.join(', ')}], bundle stock = ${bundleStock}`);
+
+        return {
+          ...product,
+          stock: bundleStock
+        };
+      });
     }
   } catch (error: any) {
     console.warn('[Products] Could not merge inventory data:', error.message);
