@@ -118,9 +118,13 @@ app.options('*', (req, res) => {
 
 // Using stateless JWT authentication; no server-side session middleware configured.
 
-// Request logging middleware
+// Request logging middleware (also tracks API calls for analytics)
 app.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  // Track API calls for analytics (excluding health checks and static assets)
+  if (req.path.startsWith('/api/') && req.path !== '/api/debug' && req.path !== '/health') {
+    trackApiCall();
+  }
   next();
 });
 
@@ -904,14 +908,23 @@ app.post('/api/analytics/pageview', optionalAuth, async (req: Request, res: Resp
   try {
     const { page } = req.body;
     const sessionUser = (req as any).user as SessionUser | undefined;
-    console.log('[API] Analytics pageview:', { page, user: sessionUser?.id });
+
+    // For anonymous users, create a fingerprint from IP + User Agent to track unique visitors
+    // This is privacy-friendly as we don't store PII, just a hash-like identifier
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const visitorId = sessionUser?.id || `anon:${ip}:${userAgent.substring(0, 50)}`;
+
+    console.log('[API] Analytics pageview:', { page, user: sessionUser?.id || 'anonymous' });
 
     if (page === 'home') {
-      await trackHomePageView(sessionUser?.id);
+      await trackHomePageView(visitorId);
+      // Also track as a "session" for first home page visits
+      await trackSession(visitorId);
     } else if (page === 'shop') {
-      await trackShopPageView(sessionUser?.id);
+      await trackShopPageView(visitorId);
     } else if (page === 'product') {
-      await trackProductView(req.body.productId, sessionUser?.id);
+      await trackProductView(req.body.productId, visitorId);
     }
 
     res.json({ success: true });
