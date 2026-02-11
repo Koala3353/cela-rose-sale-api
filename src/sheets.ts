@@ -267,8 +267,9 @@ export async function appendToSheet(sheetId: string, sheetName: string, rows: st
   try {
     const auth = getAuth();
     if (!auth) throw new Error('No Google Sheets auth available');
-    const sheetsClient = google.sheets({ version: 'v4', auth });
-    await sheetsClient.spreadsheets.values.append({
+    const client = await auth.getClient();
+    const sheetsClient = google.sheets({ version: 'v4', auth: client as any });
+    const response = await sheetsClient.spreadsheets.values.append({
       spreadsheetId: sheetId,
       range: sheetName,
       valueInputOption: 'USER_ENTERED',
@@ -276,6 +277,13 @@ export async function appendToSheet(sheetId: string, sheetName: string, rows: st
         values: rows,
       },
     });
+    console.log('[Sheets] Append result:', JSON.stringify({
+      spreadsheetId: response.data.spreadsheetId,
+      tableRange: response.data.tableRange,
+      updatedRange: response.data.updates?.updatedRange,
+      updatedRows: response.data.updates?.updatedRows,
+      updatedCells: response.data.updates?.updatedCells,
+    }));
     return true;
   } catch (error: any) {
     console.error('[Sheets] Error appending to sheet:', error);
