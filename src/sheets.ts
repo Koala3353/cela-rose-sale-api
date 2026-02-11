@@ -259,10 +259,9 @@ export function extractFilterOptions(products: Product[]): FilterOptions {
  * Append rows to a Google Sheet (for orders)
  * Requires service account with write access to the sheet
  *
- * IMPORTANT: We use `SheetName!A:A` as the range and `insertDataOption: INSERT_ROWS`
- * to force appending as new rows starting at column A. Without this, the Sheets API
- * auto-detects the table boundary, and if there is data/formulas far to the right,
- * it may append at column 700+ instead of column A.
+ * Uses values.update instead of values.append to avoid the Sheets API's
+ * table auto-detection, which can place data at column 700+ if there is
+ * data/formulas far to the right in the sheet.
  */
 // Use queue for order writes, direct for others
 export async function appendToSheet(sheetId: string, sheetName: string, rows: string[][], useQueue = false): Promise<boolean> {
@@ -274,28 +273,53 @@ export async function appendToSheet(sheetId: string, sheetName: string, rows: st
     if (!auth) throw new Error('No Google Sheets auth available');
     const client = await auth.getClient();
     const sheetsClient = google.sheets({ version: 'v4', auth: client as any });
-    // Use A:A range to anchor to column A, and INSERT_ROWS to prevent column shifting
-    const response = await sheetsClient.spreadsheets.values.append({
+
+    // Step 1: Find the next empty row by reading column A
+    const colAResponse = await sheetsClient.spreadsheets.values.get({
       spreadsheetId: sheetId,
       range: `${sheetName}!A:A`,
+    });
+    const colAValues = colAResponse.data.values || [];
+    const nextRow = colAValues.length + 1; // 1-indexed, after last occupied row in column A
+
+    // Step 2: Calculate the end column letter for the data width
+    const maxCols = Math.max(...rows.map(r => r.length));
+    const endCol = columnToLetter(maxCols);
+
+    // Step 3: Write to the exact row range starting at column A
+    const writeRange = `${sheetName}!A${nextRow}:${endCol}${nextRow + rows.length - 1}`;
+    console.log(`[Sheets] Writing ${rows.length} row(s) to range: ${writeRange}`);
+
+    const response = await sheetsClient.spreadsheets.values.update({
+      spreadsheetId: sheetId,
+      range: writeRange,
       valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
       requestBody: {
         values: rows,
       },
     });
-    console.log('[Sheets] Append result:', JSON.stringify({
+    console.log('[Sheets] Update result:', JSON.stringify({
       spreadsheetId: response.data.spreadsheetId,
-      tableRange: response.data.tableRange,
-      updatedRange: response.data.updates?.updatedRange,
-      updatedRows: response.data.updates?.updatedRows,
-      updatedCells: response.data.updates?.updatedCells,
+      updatedRange: response.data.updatedRange,
+      updatedRows: response.data.updatedRows,
+      updatedCells: response.data.updatedCells,
     }));
     return true;
   } catch (error: any) {
     console.error('[Sheets] Error appending to sheet:', error);
     throw error;
   }
+}
+
+/** Convert a 1-based column number to a letter (1=A, 2=B, ..., 27=AA, etc.) */
+function columnToLetter(col: number): string {
+  let letter = '';
+  while (col > 0) {
+    const rem = (col - 1) % 26;
+    letter = String.fromCharCode(65 + rem) + letter;
+    col = Math.floor((col - 1) / 26);
+  }
+  return letter;
 }
 
 /**
