@@ -973,6 +973,37 @@ app.get('/api/debug/analytics', async (req: Request, res: Response) => {
   }
 });
 
+// Debug orders route - test writing directly to Orders sheet
+app.get('/api/debug/orders', async (req: Request, res: Response) => {
+  try {
+    if (!GOOGLE_SHEET_ID) throw new Error('No Sheet ID');
+    const testRow = [
+      'TEST-' + Date.now(),  // A: orderId
+      new Date().toISOString(), // B: timestamp
+      'debug@test.com',      // C: email
+      'DEBUG TEST',           // D: purchaserName
+      '000000',              // E: studentId
+    ];
+    console.log('[Debug] Testing write to Orders sheet:', ORDERS_SHEET_NAME);
+    console.log('[Debug] Sheet ID:', GOOGLE_SHEET_ID);
+    await appendToSheet(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, [testRow]);
+    res.json({
+      success: true,
+      message: `Wrote test row to "${ORDERS_SHEET_NAME}" sheet`,
+      sheetId: GOOGLE_SHEET_ID,
+      sheetName: ORDERS_SHEET_NAME
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack,
+      sheetId: GOOGLE_SHEET_ID,
+      sheetName: ORDERS_SHEET_NAME
+    });
+  }
+});
+
 // 404 handler - return list of available endpoints
 app.use((req: Request, res: Response) => {
   res.status(404).json({
