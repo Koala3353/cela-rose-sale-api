@@ -977,8 +977,9 @@ app.get('/api/debug/analytics', async (req: Request, res: Response) => {
 app.get('/api/debug/orders', async (req: Request, res: Response) => {
   try {
     if (!GOOGLE_SHEET_ID) throw new Error('No Sheet ID');
+    const testId = 'TEST-' + Date.now();
     const testRow = [
-      'TEST-' + Date.now(),  // A: orderId
+      testId,  // A: orderId
       new Date().toISOString(), // B: timestamp
       'debug@test.com',      // C: email
       'DEBUG TEST',           // D: purchaserName
@@ -987,11 +988,28 @@ app.get('/api/debug/orders', async (req: Request, res: Response) => {
     console.log('[Debug] Testing write to Orders sheet:', ORDERS_SHEET_NAME);
     console.log('[Debug] Sheet ID:', GOOGLE_SHEET_ID);
     await appendToSheet(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, [testRow]);
+
+    // Read back from the sheet to verify the write persisted
+    let readBack: string[][] = [];
+    let totalRows = 0;
+    let headers: string[] = [];
+    try {
+      const allData = await fetchSheetData(GOOGLE_SHEET_ID, ORDERS_SHEET_NAME, GOOGLE_API_KEY);
+      totalRows = allData.length;
+      headers = allData[0] || [];
+      readBack = allData.slice(-3);
+    } catch (readErr: any) {
+      readBack = [['READ_ERROR: ' + readErr.message]];
+    }
+
     res.json({
       success: true,
-      message: `Wrote test row to "${ORDERS_SHEET_NAME}" sheet`,
+      message: `Wrote test row "${testId}" to "${ORDERS_SHEET_NAME}" sheet`,
       sheetId: GOOGLE_SHEET_ID,
-      sheetName: ORDERS_SHEET_NAME
+      sheetName: ORDERS_SHEET_NAME,
+      totalRowsInSheet: totalRows,
+      headers,
+      lastThreeRows: readBack,
     });
   } catch (error: any) {
     res.status(500).json({
