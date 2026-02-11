@@ -258,6 +258,11 @@ export function extractFilterOptions(products: Product[]): FilterOptions {
 /**
  * Append rows to a Google Sheet (for orders)
  * Requires service account with write access to the sheet
+ *
+ * IMPORTANT: We use `SheetName!A:A` as the range and `insertDataOption: INSERT_ROWS`
+ * to force appending as new rows starting at column A. Without this, the Sheets API
+ * auto-detects the table boundary, and if there is data/formulas far to the right,
+ * it may append at column 700+ instead of column A.
  */
 // Use queue for order writes, direct for others
 export async function appendToSheet(sheetId: string, sheetName: string, rows: string[][], useQueue = false): Promise<boolean> {
@@ -269,10 +274,12 @@ export async function appendToSheet(sheetId: string, sheetName: string, rows: st
     if (!auth) throw new Error('No Google Sheets auth available');
     const client = await auth.getClient();
     const sheetsClient = google.sheets({ version: 'v4', auth: client as any });
+    // Use A:A range to anchor to column A, and INSERT_ROWS to prevent column shifting
     const response = await sheetsClient.spreadsheets.values.append({
       spreadsheetId: sheetId,
-      range: sheetName,
+      range: `${sheetName}!A:A`,
       valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
       requestBody: {
         values: rows,
       },
